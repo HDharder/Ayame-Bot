@@ -1,0 +1,79 @@
+{
+  "updates": [
+    {
+      "version": "1.3.1",
+      "date": "2025-10-29",
+      "title": "Otimização de Atualização de Inventário",
+      "features": [],
+      "fixes": [
+        "**Otimização Crítica:** Refatorado o processo de atualização de inventários (ao usar 'Encerrar Mesa') para usar operações em lote (`batchUpdateInventories`), resolvendo erros de quota da API do Google (`[429] Quota exceeded`).",
+        "Corrigido erro `ReferenceError: rowChanged is not defined` que ocorria durante a atualização em lote de inventários.",
+        "Corrigido erro na função `getItemCategory` que impedia o retorno correto de categorias de itens já presentes no cache."
+      ],
+      "backend": [
+        "Implementada função `preloadInventoryEmbedData` para carregar dados de Tokens, Níveis e XP de forma otimizada antes de atualizar múltiplos inventários.",
+        "Implementada função `preloadItemCategories` para carregar todas as categorias de itens em cache de uma só vez.",
+        "Adicionado um atraso (`delay`) entre as operações de escrita (`row.save()`) na atualização em lote para mitigar limites de escrita da API."
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2025-10-28",
+      "title": "Comando /inventario & Funções Genéricas Google",
+      "features": [
+        "**Novo Comando `/inventario`:** Permite aos jogadores exibir o inventário dos seus personagens num canal dedicado.",
+        "O comando `/inventario` regista o canal para o personagem selecionado, impedindo que outros jogadores usem o mesmo canal.",
+        "O comando `/inventario` atualiza automaticamente o canal registado e apaga mensagens antigas se o jogador trocar de personagem ou re-executar o comando.",
+        "O comando `/inventario` calcula e exibe `Nível / Qtd. Mesas no Nível` buscando dados das abas 'Inventário', 'Primários'/'Secundários' e 'Player ID'.",
+        "O comando `/inventario` exibe Gold (GP/PP/PC), Tokens e itens divididos por categoria (Mundanos, Armas, Armaduras, etc.).",
+        "**Restrição de Canal:** Implementado `utils/channelGuard.js` que lê regras da aba 'Player ID' para restringir onde comandos (como `/inventario`) podem ser usados (Texto, Fórum, Categoria)."
+      ],
+      "fixes": [
+        "Corrigidos múltiplos erros no comando `/inventario` relacionados a timeouts (`Unknown interaction`), valores duplicados no seletor (`SELECT_COMPONENT_OPTION_VALUE_DUPLICATED`), e falhas ao carregar/salvar células na planilha (`rowIndex undefined`, `Cell not loaded`, `Unable to parse range`).",
+        "Corrigido erro no cálculo de `Nível / Qtd. Mesas` que lia a coluna errada ('Total' em vez de 'Mesas Jogadas') na aba 'Primários'/'Secundários'."
+      ],
+      "backend": [
+        "**Funções Genéricas Google:** Adicionadas `getValueFromSheet`, `setValueInSheet`, `clearValueInSheet` em `utils/google.js` para buscar e alterar células individuais de forma segura (preservando fórmulas), usando o método de iteração de células.",
+        "A função `registerChannel` em `utils/inventarioUtils.js` foi refatorada para usar as novas funções genéricas."
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2025-10-28",
+      "title": "Drops Mundanos & Contagem de Mesas",
+      "features": [
+        "Adicionada a opção 'drop_de_mundanos' ao comando `/loot`.",
+        "Adicionada validação para a aba 'Itens Mundanos' na Tabela de Craft.",
+        "Mestres agora recebem +1 em 'Mesas Mestradas' (planilha 'Tokens') ao usar o botão 'Encerrar Mesa'."
+      ],
+      "fixes": [
+        "Um bug na hora de definir os tokens gastos alterava a linha inteira do jogador escolhido, perdendo todas as fómulas que tinham. Isso foi corrigido para alterar apenas a célula designada ('Double Up')."
+      ],
+      "backend": []
+    },
+    {
+      "version": "1.1.0",
+      "date": "2025-10-27",
+      "title": "Refatoração de Permissões e Custo do Dobro",
+      "features": [
+        "Criado o módulo `utils/auth.js` para centralizar todas as verificações de permissão (Narrador/Staff/Mestre).",
+        "Todos os comandos (`/loot`, `/relatorio`, `/abrir-mesa`, etc.) foram atualizados para usar o novo `auth.js`.",
+        "A função `spendPlayerTokens` agora incrementa a coluna 'Double Up' em +1, em vez de subtrair 4 tokens."
+      ],
+      "fixes": [],
+      "backend": []
+    },
+    {
+      "version": "1.0.0",
+      "date": "2025-10-24",
+      "title": "Lançamento Inicial",
+      "features": [
+        "Sistema de Loot (`/loot`)",
+        "Sistema de Registro de Mesa (`/abrir-mesa`, `/registrar-mesa`)",
+        "Sistema de Sorteio (`/sortear`)"
+      ],
+      "fixes": [],
+      "backend": []
+    }
+  ]
+}
