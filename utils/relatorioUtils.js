@@ -1,11 +1,12 @@
+// utils/relatorioUtils.js
 // Funções específicas para o comando /relatório
 
 const { userMention, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { docControle } = require('./google.js'); // Importa docControle
+const { docControle } = require('./google.js'); 
+const { getPlayerLevels, calculateGold } = require('./lootLogic.js'); // <<< IMPORTA LÓGICA DO LOOT
+const { batchUpdateInventories } = require('./inventoryManager.js'); // <<< IMPORTA GESTOR DE INVENTÁRIO
 const { formatPlayerList } = require('./lootUtils'); // Reutiliza formatPlayerList
 
-// ID do canal de log (mesmo do loot)
-//const LOG_CHANNEL_ID = '1015029328863576078'; // Confirme se este ID está correto
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 /**
@@ -39,12 +40,34 @@ async function findEligibleTablesForRelatorio(userId, username, isStaff, docCont
 }
 
 /**
+ * Função auxiliar para consolidar itens do state.itemsData para state.items
+ * (Usado internamente por handleRelatorioFinalization)
+ */
+function consolidateItems(state) {
+    state.players.forEach(p => {
+        p.items = []; // Reseta a lista final
+        if (p.itemsData) {
+            for (const key in p.itemsData) { // key = 'itens', 'materiais', 'misc'
+                if (Array.isArray(p.itemsData[key])) {
+                    p.items.push(...p.itemsData[key]); // Junta todos os tipos de drop
+                }
+            }
+        }
+        // <<< ADICIONADO: Adiciona o Gold Extra como um "item" para o log >>>
+        if (p.extraGold && p.extraGold > 0) {
+            // Adicionamos como um item para que apareça no log e na Planilha Histórico (colunas N-S)
+            p.items.push({ name: `[Extra] ${p.extraGold.toFixed(2)} PO`, amount: 1 });
+        }
+    });
+}
+
+/**
  * Constrói o conteúdo da mensagem de log para o /relatório.
- * @param {object} state - O objeto de state do relatório. Contém options, players (com items).
+ * (Usado internamente por handleRelatorioFinalization)
+ * @param {object} state - O objeto de state do relatório (JÁ ATUALIZADO com gold e itens).
  * @returns {string} - Conteúdo formatado da mensagem de log.
  */
 function buildRelatorioLogContent(state) {
-    // Usa o Mestre do state (pode ter sido inputado pelo Staff) ou o Mestre original
     const mestreIdToMention = state.options.mestreMencaoId || state.mestreId;
     const mestreMention = userMention(mestreIdToMention);
     const nomeMesaFormatado = state.options.nomeMesa ? `**${state.options.nomeMesa}**\n\n` : '';
@@ -52,35 +75,16 @@ function buildRelatorioLogContent(state) {
     // Formata a lista de players (incluindo nível e itens inputados manualmente)
     const playersString = formatPlayerList(state.players, true, true); // Inclui itens e nível
 
-    // Calcula Gold Bastião e Final a partir do Gold Total (se não for ignorado)
-    let goldFinalPerPlayer = 0;
-    let goldBastiãoTotal = 0;
-    let criterio = state.options.criterio || "Não informado"; // Usa critério do input ou padrão
-
-    if (!state.options.naoRolarLoot && typeof state.options.goldTotal === 'number' && state.players.length > 0) {
-        const numPlayers = state.players.length;
-        // Assume que state.options.goldTotal é o valor ANTES da divisão e do bastião
-        // Gold por player ANTES do bastião = goldTotal / numPlayers
-        const goldPerPlayerBeforeBastion = state.options.goldTotal;
-        goldBastiãoTotal = (goldPerPlayerBeforeBastion * 0.20) * numPlayers;
-        goldFinalPerPlayer = goldPerPlayerBeforeBastion * 0.80;
-        // Arredonda para exibição
-        goldFinalPerPlayer = parseFloat(goldFinalPerPlayer.toFixed(2));
-        goldBastiãoTotal = parseFloat(goldBastiãoTotal.toFixed(2));
-        // Adiciona info do gold total no critério se não foi informado
-        if (!state.options.criterio) {
-            criterio = `Gold Total Informado: ${state.options.goldTotal} PO`;
-        }
-    } else if (state.options.naoRolarLoot) {
-        criterio = "Rolagem de gold ignorada.";
-    }
+    // Lê os valores finais do gold e critério (calculados anteriormente)
+    const goldFinalPerPlayer = state.goldFinalPerPlayer || 0;
+    const goldBastiãoTotal = state.goldBastiãoTotal || 0;
+    const criterio = state.criterio || "Não informado";
 
     // Monta as linhas da mensagem
     const logMessageLines = [
       nomeMesaFormatado,
       `**Mestre:** ${mestreMention}`,
       `**Players:**\n${playersString}\n`,
-      // Adiciona Loot/Bastião condicionalmente
       ...(state.options.naoRolarLoot
           ? [`*(Rolagem de Gold Ignorada)*\n`]
           : [`**Loot:** ${goldFinalPerPlayer} PO || ${criterio} ||`,
@@ -94,8 +98,36 @@ function buildRelatorioLogContent(state) {
 }
 
 /**
+ * Envia a mensagem de log para o /relatório.
+ * (Usado internamente por handleRelatorioFinalization)
+ * @param {object} state - O objeto de state do relatório.
+ * @param {DiscordClient} client - Instância do client do Discord.
+ * @param {string} logContent - O conteúdo pré-formatado da mensagem.
+ */
+async function sendRelatorioLogMessage(state, client, logContent) {
+    try {
+        const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
+        if (!logChannel || !logChannel.isTextBased()) { throw new Error(`Canal de log ${LOG_CHANNEL_ID} não encontrado...`); }
+        
+        const relatorioButtonInitial = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`escrever_relatorio|${state.mestreId}`).setLabel('Escrever Relatório').setStyle(ButtonStyle.Primary)
+        );
+        const logMessage = await logChannel.send({ content: logContent, components: [relatorioButtonInitial] });
+        const relatorioButtonUpdated = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`escrever_relatorio|${state.mestreId}|${logMessage.id}`).setLabel('Escrever Relatório').setStyle(ButtonStyle.Primary)
+        );
+        await logMessage.edit({ components: [relatorioButtonUpdated] });
+        console.log(`[INFO sendRelatorioLogMessage] Mensagem de log enviada para ${logChannel.name} (ID: ${logMessage.id})`);
+      } catch (error) {
+        console.error("[ERRO sendRelatorioLogMessage] Falha ao enviar mensagem de log:", error);
+        // Não relança, apenas loga
+      }
+}
+
+/**
  * Atualiza a planilha Histórico com os dados manuais do /relatório.
- * @param {object} state - O objeto de state do relatório. Contém selectedMessageId, players (com items, colIndex), options (goldTotal, naoRolarLoot).
+ * (Usado internamente por handleRelatorioFinalization)
+ * @param {object} state - O objeto de state do relatório (JÁ ATUALIZADO com gold e itens).
  * @param {GoogleSpreadsheet} docControle - Instância do docControle.
  */
 async function updateHistoricoForRelatorio(state, docControle) {
@@ -121,12 +153,8 @@ async function updateHistoricoForRelatorio(state, docControle) {
 
     // M: Loot (PO) por Player
     const cellLoot = sheetHistorico.getCell(rowIndex_0_based, 12);
-    let goldPerPlayerValue = 0;
-    if (!state.options.naoRolarLoot && typeof state.options.goldTotal === 'number' && state.players.length > 0) {
-        const goldPerPlayerBeforeBastion = state.options.goldTotal;// / state.players.length;
-        goldPerPlayerValue = goldPerPlayerBeforeBastion * 0.80; // Salva o gold PÓS-bastião por player
-    }
-    cellLoot.value = !isNaN(goldPerPlayerValue) ? parseFloat(goldPerPlayerValue.toFixed(2)) : 0;
+    // Salva o gold LÍQUIDO (pós-bastião) na planilha, lendo do state
+    cellLoot.value = state.goldFinalPerPlayer;
     cellsToUpdate.push(cellLoot);
 
     // N a S: Itens dos Jogadores
@@ -154,7 +182,7 @@ async function updateHistoricoForRelatorio(state, docControle) {
 
     // Salva
     await sheetHistorico.saveUpdatedCells(cellsToUpdate);
-    console.log(`[INFO updateHistoricoForRelatorio] Planilha atualizada para linha ${sheetRowIndex_1_based}.`);
+    console.log(`[INFO updateHistoricoForRelatorio] Planilha 'Historico' atualizada para linha ${sheetRowIndex_1_based}.`);
 
   } catch (error) {
     console.error("[ERRO updateHistoricoForRelatorio] Falha ao atualizar planilha:", error);
@@ -163,42 +191,111 @@ async function updateHistoricoForRelatorio(state, docControle) {
 }
 
 /**
- * Envia a mensagem de log para o /relatório. Reutiliza estrutura do sendLogMessage.
+ * Função centralizada que calcula o gold (se necessário), atualiza o Histórico E 
+ * ATUALIZA O INVENTÁRIO (via batch) para o comando /relatorio.
  * @param {object} state - O objeto de state do relatório.
- * @param {DiscordClient} client - Instância do client do Discord.
+ * @param {GoogleSpreadsheet} docControle - Instância do docControle.
+ * @param {import('discord.js').Client} client - O cliente Discord (para batchUpdate).
  */
-async function sendRelatorioLogMessage(state, client) {
-    try {
-        const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
-        if (!logChannel || !logChannel.isTextBased()) { throw new Error(`Canal de log ${LOG_CHANNEL_ID} não encontrado...`); }
+async function handleRelatorioFinalization(state, docControle, client) {
+  try {
+    await docControle.loadInfo();
+    const sheetHistorico = docControle.sheetsByTitle['Historico'];
+    if (!sheetHistorico) throw new Error("Aba 'Historico' não encontrada.");
+    await sheetHistorico.loadHeaderRow(1);
+    const rows = await sheetHistorico.getRows();
+    const rowIndexInArray = rows.findIndex(r => r.get('ID da Mensagem') === state.selectedMessageId);
+    if (rowIndexInArray === -1) { throw new Error('Linha da mesa não encontrada para atualização.'); }
+    const mesaRow = rows[rowIndexInArray]; // Pega a linha da mesa
+    const tierString = mesaRow.get('Tier') || '';
 
-        // Chama a função para construir o conteúdo específico do relatório
-        const logMessageContent = buildRelatorioLogContent(state);
+    // === 1. CALCULAR GOLD (Rolado, Manual ou Ignorado) ===
+    let goldPerPlayer = 0;
+    let criterio = state.options.criterio || "Não informado";
+    let goldBastiãoTotal = 0;
+    let goldFinalPerPlayer = 0;
+    const numPlayers = state.players.length; // Pega num players uma vez
 
-        // Cria o botão inicial "Escrever Relatório"
-        const relatorioButtonInitial = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`escrever_relatorio|${state.mestreId}`).setLabel('Escrever Relatório').setStyle(ButtonStyle.Primary)
+    if (state.options.naoRolarLoot) {
+        criterio = "Rolagem de gold ignorada.";
+    } else if (state.options.goldTotal !== null && state.options.goldTotal !== undefined) {
+        // Gold Manual (Fornecido no comando)
+        const goldPerPlayerBeforeBastion = state.options.goldTotal;
+        goldBastiãoTotal = (goldPerPlayerBeforeBastion * 0.20) * numPlayers;
+        goldFinalPerPlayer = goldPerPlayerBeforeBastion * 0.80;
+        if (!state.options.criterio) {
+            criterio = `Gold Total Informado: ${state.options.goldTotal} PO`;
+        }
+    } else {
+        // Gold Rolado (Vazio)
+        const playerLevels = state.players.map(p => p.level); // Pega os níveis salvos
+        const goldResult = calculateGold(playerLevels, tierString, false); // Rola (sem loot previsto)
+        goldPerPlayer = goldResult.goldPerPlayer;
+        criterio = goldResult.criterio;
+        goldBastiãoTotal = (goldPerPlayer * 0.20) * numPlayers;
+        goldFinalPerPlayer = goldPerPlayer * 0.80;
+    }
+
+    // Salva os resultados no state para as outras funções usarem
+    state.goldFinalPerPlayer = !isNaN(goldFinalPerPlayer) ? parseFloat(goldFinalPerPlayer.toFixed(2)) : 0;
+    state.goldBastiãoTotal = !isNaN(goldBastiãoTotal) ? parseFloat(goldBastiãoTotal.toFixed(2)) : 0;
+    state.criterio = criterio;
+
+    // === 2. CONSOLIDAR ITENS ===
+    consolidateItems(state); // Consolida .itemsData em .items
+
+    // === 3. ATUALIZAR PLANILHA HISTORICO ===
+    // (Passa o state ATUALIZADO para a função)
+    await updateHistoricoForRelatorio(state, docControle);
+
+    // === 4. ATUALIZAR INVENTÁRIOS (batchUpdate) ===
+    console.log(`[INFO RelatorioFinal] Iniciando atualização de inventários para ${state.players.length} jogadores...`);
+    const allPlayerChanges = [];
+    for (const player of state.players) {
+      // <<< ALTERADO: Calcula o gold total para o inventário >>>
+        const baseGold = state.goldFinalPerPlayer;
+        const extraGold = player.extraGold || 0; // Pega o gold extra salvo
+        const totalGoldForInventory = baseGold + extraGold;
+
+        // <<< ALTERADO: Filtra o "item" de gold extra para não ir ao inventário >>>
+        const realItemsToAdd = (player.items || []).filter(item => 
+            !item.name.startsWith('[Extra]')
         );
-        // Envia a mensagem
-        const logMessage = await logChannel.send({ content: logMessageContent, components: [relatorioButtonInitial] });
-        // Cria o botão atualizado com o ID da mensagem
-        const relatorioButtonUpdated = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`escrever_relatorio|${state.mestreId}|${logMessage.id}`).setLabel('Escrever Relatório').setStyle(ButtonStyle.Primary)
-        );
-        // Edita a mensagem para incluir o ID no botão
-        await logMessage.edit({ components: [relatorioButtonUpdated] });
-        console.log(`[INFO sendRelatorioLogMessage] Mensagem de log enviada para ${logChannel.name} (ID: ${logMessage.id})`);
+        const changes = {
+            gold: totalGoldForInventory,
+            itemsToAdd: realItemsToAdd // Usa os itens consolidados
+        };
+        // (Assume que /relatorio não suporta "double gold")
+        
+        if (changes.gold !== 0 || changes.itemsToAdd.length > 0) {
+            console.log(`[INFO RelatorioFinal] Adicionando ao lote: ${player.tag} - ${player.char} (Gold: ${changes.gold.toFixed(2)}, Itens: ${changes.itemsToAdd.length})`);
+            allPlayerChanges.push({
+                username: player.tag,
+                characterName: player.char,
+                changes: changes
+            });
+        }
+    }
+    if (allPlayerChanges.length > 0) {
+        const batchSuccess = await batchUpdateInventories(allPlayerChanges, client);
+        if (!batchSuccess) {
+            console.error("[ERRO RelatorioFinal] batchUpdateInventories reportou falha.");
+            throw new Error("Falha ao atualizar um ou mais inventários via batchUpdate.");
+        }
+    }
 
-      } catch (error) {
-        console.error("[ERRO sendRelatorioLogMessage] Falha ao enviar mensagem de log:", error);
-        // Não relança, apenas loga
-      }
+    // === 5. ENVIAR LOG (Após tudo) ===
+    const logContent = buildRelatorioLogContent(state);
+    await sendRelatorioLogMessage(state, client, logContent);
+
+  } catch (error) {
+    console.error("[ERRO handleRelatorioFinalization] Falha ao finalizar relatório:", error);
+    throw error; // Relança o erro para o handleButton/handleSelect
+  }
 }
 
 
 module.exports = {
   findEligibleTablesForRelatorio,
-  buildRelatorioLogContent,
-  updateHistoricoForRelatorio,
-  sendRelatorioLogMessage
+  handleRelatorioFinalization // <<< EXPORTA A NOVA FUNÇÃO UNIFICADA
 };

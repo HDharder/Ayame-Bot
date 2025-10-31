@@ -100,7 +100,11 @@ function parseItemInput(text) {
   // (.+)            - Captura o restante como nome do item (pelo menos um caractere)
   // $               - Fim da string
   // i               - Ignora maiúsculas/minúsculas no "x"
-  const regex = /^(?:(\d+)\s*x\s*)?(.+)$/i;
+  // Regex ATUALIZADO: Captura qualquer coisa que NÃO SEJA um colchete
+  // Grupo 1: (\d+)\s*x\s* -> Opcional, "Nx "
+  // Grupo 2: ([^\[]+)       -> Captura tudo que não for "["
+  //const regex = /^(?:(\d+)\s*x\s*)?(.+)$/i;
+  const regex = /^(?:(\d+)\s*x\s*)?([^\[]+)/i;
 
   for (const item of itemsRaw) {
     const trimmedItem = item.trim(); // Remove espaços extras
