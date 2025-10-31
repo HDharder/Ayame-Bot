@@ -1,6 +1,6 @@
 // utils/relatorioUtils.js
 const { userMention, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { docControle } = require('./google.js'); 
+const { docControle, incrementarMesasMestradas } = require('./google.js');
 const { getPlayerLevels, calculateGold } = require('./lootLogic.js'); // <<< IMPORTA LÓGICA DO LOOT
 const { batchUpdateInventories } = require('./inventoryManager.js'); // <<< IMPORTA GESTOR DE INVENTÁRIO
 const { formatPlayerList } = require('./lootUtils'); // Reutiliza formatPlayerList
@@ -246,6 +246,22 @@ async function handleRelatorioFinalization(state, docControle, client) {
             console.error("[ERRO RelatorioFinal] batchUpdateInventories reportou falha.");
             throw new Error("Falha ao atualizar um ou mais inventários via batchUpdate."); //
         }
+    }
+    // === 4.5. INCREMENTAR MESAS MESTRADAS (NOVO) ===
+    try {
+        // Determina qual ID de mestre usar
+        const mestreId = state.options.mestreMencaoId || state.mestreId;
+        const mestreUser = await client.users.fetch(mestreId);
+        const mestreUsername = mestreUser.username; // Pega o username (ex: hdharder)
+        
+        if (mestreUsername) {
+            await incrementarMesasMestradas(mestreUsername);
+        } else {
+            console.warn(`[AVISO RelatorioFinal] Não foi possível obter username do mestreId ${mestreId}`);
+        }
+    } catch (e) {
+        console.error("[ERRO RelatorioFinal] Falha ao tentar incrementar mesas mestradas:", e);
+        // Não impede o resto da função, apenas loga o erro.
     }
 
     // === 5. ENVIAR LOG (Após tudo) ===
