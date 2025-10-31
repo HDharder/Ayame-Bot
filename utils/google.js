@@ -5,11 +5,20 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { roleMention, userMention } = require('discord.js'); // Para parsearAnuncioMesa
 
 // --- 2. Configuração das Credenciais ---
-// (Toda a lógica de conexão fica AQUI e é exportada)
-const SORTEIO_SHEET_ID = process.env.SORTEIO_SHEET_ID;
-const CONTROLE_SHEET_ID = process.env.CONTROLE_SHEET_ID;
-const TABELA_CRAFT_ID = process.env.TABELA_CRAFT_ID;
-const credenciais = require('../credentials.json'); // Nota: o caminho mudou para '../'
+// <<< Tenta carregar credenciais da Secret ou do ficheiro >>>
+let credenciais;
+try {
+  if (process.env.GOOGLE_CREDENTIALS) {
+    credenciais = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    console.log("[INFO Google] Credenciais carregadas a partir das Secrets.");
+  } else {
+    credenciais = require('../credentials.json');
+    console.log("[INFO Google] Credenciais carregadas a partir de credentials.json.");
+  }
+} catch (error) {
+  console.error("[ERRO Google] Falha ao carregar/parsear credenciais:", error);
+  process.exit(1); // Para o bot se não conseguir carregar credenciais
+}
 
 const serviceAccountAuth = new JWT({
   email: credenciais.client_email,
@@ -17,47 +26,42 @@ const serviceAccountAuth = new JWT({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
+const SORTEIO_SHEET_ID = process.env.SORTEIO_SHEET_ID;
+const CONTROLE_SHEET_ID = process.env.CONTROLE_SHEET_ID;
+const TABELA_CRAFT_ID = process.env.TABELA_CRAFT_ID;
+const INVENTARIO_SHEET_ID = process.env.INVENTARIO_SHEET_ID || '1j819p3VCgRpUz3rNX0lg24M5bS9jNKG-mXQ3usxLGfo';
+
 const docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
 const docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
 const docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
-
-const INVENTARIO_SHEET_ID = process.env.INVENTARIO_SHEET_ID || '1j819p3VCgRpUz3rNX0lg24M5bS9jNKG-mXQ3usxLGfo';
 const docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
+
 
 // --- 3. Lógica Principal do Sorteio (Refatorada) ---
 async function fetchPlayerLevels(playerNames) {
   await docSorteio.loadInfo();
-  const sheetPrimario = docSorteio.sheetsByTitle['Primários'];
-  const sheetSecundario = docSorteio.sheetsByTitle['Secundários'];
-  if (!sheetPrimario || !sheetSecundario) {
-    throw new Error("Abas 'Primários' ou 'Secundários' não encontradas na planilha de Sorteio.");
+  // <<< ALTERAÇÃO: Usa "Personagens" >>>
+  const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+  if (!sheetPersonagens) {
+    throw new Error("Aba 'Personagens' não encontrada na planilha de Sorteio.");
   }
   const playerLevelMap = new Map();
   const playerNamesSet = new Set(playerNames.map(n => n.toLowerCase()));
   const headerRowIndex = 2; // Assume headers na linha 2
-  await sheetPrimario.loadHeaderRow(headerRowIndex);
-  const rowsPrimario = await sheetPrimario.getRows();
-  for (const row of rowsPrimario) {
-    const nome = row.get(sheetPrimario.headerValues[0])?.toLowerCase(); // Coluna A ('Nome')
-    const levelStr = row.get(sheetPrimario.headerValues[3]); // Coluna D ('Level')
+  await sheetPersonagens.loadHeaderRow(headerRowIndex);
+  const rows = await sheetPersonagens.getRows();
+  
+  for (const row of rows) {
+    const nome = row.get('Nome')?.toLowerCase(); // Coluna A ('Nome')
+    const levelStr = row.get('Level'); // Coluna D ('Level')
+    const tipo = row.get('Prim/Sec/Terc'); // Coluna C
+    
+    // Inclui apenas se o nome estiver na lista de inscritos
     if (playerNamesSet.has(nome)) {
       const nivel = parseInt(levelStr);
       if (!isNaN(nivel)) {
         if (!playerLevelMap.has(nome)) playerLevelMap.set(nome, new Set());
-        playerLevelMap.get(nome).add(nivel);
-      }
-    }
-  }
-  await sheetSecundario.loadHeaderRow(headerRowIndex);
-  const rowsSecundario = await sheetSecundario.getRows();
-  for (const row of rowsSecundario) {
-    const nome = row.get(sheetSecundario.headerValues[0])?.toLowerCase(); // Coluna A ('Nome')
-    const personagem = row.get(sheetSecundario.headerValues[1]); // Coluna B ('Personagem')
-    const levelStr = row.get(sheetSecundario.headerValues[3]); // Coluna D ('Level')
-    if (playerNamesSet.has(nome) && personagem) {
-      const nivel = parseInt(levelStr);
-      if (!isNaN(nivel)) {
-        if (!playerLevelMap.has(nome)) playerLevelMap.set(nome, new Set());
+        // Adiciona o nível ao Set do jogador
         playerLevelMap.get(nome).add(nivel);
       }
     }
@@ -90,7 +94,7 @@ async function executarLogicaSorteio(nomesInscritos, levelFilter = []) {
   }
   if (jogadoresElegiveis.length === 0) {
     if (levelFilter.length > 0) {
-      throw new Error('Nenhum dos jogadores inscritos possui personagens nos níveis solicitados OU não foram encontrados nas abas Primário/Secundário.');
+      throw new Error('Nenhum dos jogadores inscritos possui personagens nos níveis solicitados OU não foram encontrados na aba Personagens.');
     } else {
       throw new Error('Nenhum dos jogadores inscritos foi encontrado na planilha de prioridade. Verifique os nomes.');
     }
@@ -116,8 +120,6 @@ async function carregarDadosPlanilha() {
     throw new Error("Aba 'Mesas Jogadas (Total)' não foi encontrada!");
   }
   
-  // PASSO 1: Carrega os metadados (rowCount, columnCount)
-  // Isso foi o que fizemos antes para corrigir o crash.
   await sheet.loadCells(); 
   
   const dataInicioPlanilha = new Date(Date.UTC(2025, 8, 1));
@@ -139,17 +141,11 @@ async function carregarDadosPlanilha() {
 
   let colunaAtualLetra = 'A';
   if (indiceAtualReal >= 0) {
-      // PASSO 2: Carrega a linha do cabeçalho (Linha 1)
-      // (Isso garante que getCell(0, ...) funcione para encontrar a 'colunaAtualLetra')
       const headerRange = `A1:${sheet.getCell(0, sheet.columnCount - 1).a1Address.replace(/[0-9]/g, '')}1`;
       await sheet.loadCells(headerRange);
-      
       colunaAtualLetra = sheet.getCell(0, indiceAtualReal).a1Address.replace(/[0-9]/g, '');
   }
 
-  // PASSO 3: (A CORREÇÃO) Carrega o range de DADOS
-  // (Carrega da linha 2 até o fim, da Coluna A até a coluna da semana atual)
-  // Esta linha foi removida por engano e está sendo restaurada.
   const dataRange = `A2:${colunaAtualLetra}${sheet.rowCount}`;
   await sheet.loadCells(dataRange);
 
@@ -162,7 +158,6 @@ async function carregarDadosPlanilha() {
     let indiceUltimoJogo = -1;
     const limiteLeitura = indiceAtualReal;
     
-    // Este loop agora vai funcionar, pois os dados foram carregados no PASSO 3
     for (let j = 1; j <= limiteLeitura; j++) {
       const cellValue = sheet.getCell(i, j)?.value; // Colunas B, C, D... (Semanas)
       if (parseInt(cellValue) > 0) {
@@ -336,7 +331,9 @@ async function parsearAnuncioMesa(guild, niveisString, dataHoraString, duracao) 
       try {
           const dataMesa = new Date(`20${ano}`, mes - 1, dia, hora, min);
           if (!isNaN(dataMesa)) {
-             timestamp = Math.floor(dataMesa.getTime() / 1000);
+             // <<< CORREÇÃO: Subtrai 5 horas (em segundos) >>>
+             const fiveHoursInSeconds = 5 * 60 * 60; 
+             timestamp = Math.floor(dataMesa.getTime() / 1000) - fiveHoursInSeconds; 
           }
       } catch (dateError) {
           console.error("Erro ao processar data/hora:", dateError);
@@ -355,77 +352,134 @@ async function parsearAnuncioMesa(guild, niveisString, dataHoraString, duracao) 
   return { anuncioBase, finalTierString, mencaoJogadoresCargo: mencaoJogadores };
 }
 
-async function incrementarContagem(sheet, playerNames, targetColumnIndex) {
-    console.log(`[DEBUG] Iniciando incrementarContagem para ${sheet?.title} com ${playerNames.length} jogadores na coluna ${targetColumnIndex}.`);
-    await docSorteio.loadInfo();
-    const currentSheet = docSorteio.sheetsByTitle[sheet.title];
-    if (!currentSheet || playerNames.length === 0) {
-        console.warn(`[AVISO] Aba ${sheet?.title} inválida ou lista de jogadores vazia. Pulando incremento.`);
-        return;
+/**
+ * Incrementa a contagem de mesas jogadas para uma lista de jogadores em uma coluna específica,
+ * opcionalmente filtrando pelo tipo de personagem.
+ * @param {import('google-spreadsheet').GoogleSpreadsheetWorksheet} sheet - A aba onde a contagem será incrementada (espera-se 'Personagens').
+ * @param {string[]} playerNames - Array com as tags dos jogadores (Nome#1234).
+ * @param {number} targetColumnIndex - O índice 0-based da coluna da semana a ser incrementada.
+ * @param {string|null} [characterType=null] - O tipo de personagem ('1' ou '2') a incrementar. Se null, incrementa todas as linhas do jogador.
+ * @returns {Promise<boolean>} - True se a operação foi bem-sucedida (ou não precisou fazer nada), False se ocorreu um erro.
+ */
+async function incrementarContagem(sheet, playerNames, targetColumnIndex, characterType = null) {
+    console.log(`[DEBUG] Iniciando incrementarContagem para ${sheet?.title} com ${playerNames.length} jogadores na coluna ${targetColumnIndex}${characterType ? ` (Tipo: ${characterType})` : ''}.`);
+    // Validação inicial
+    const currentSheet = sheet; // <<< CORREÇÃO: Usa a 'sheet' passada diretamente
+    if (!currentSheet || typeof currentSheet.title !== 'string') {
+        console.error("[ERRO incrementarContagem] Objeto 'sheet' inválido.");
+        return false;
+    }
+    if (playerNames.length === 0) {
+        console.warn(`[AVISO incrementarContagem] Lista de jogadores vazia. Pulando incremento para ${currentSheet.title}.`);
+        return true; // Nada a fazer, considera sucesso
     }
 
     try {
-         if (targetColumnIndex < 0 || targetColumnIndex >= currentSheet.columnCount) {
-             console.warn(`[AVISO] Índice da coluna alvo (${targetColumnIndex}) fora dos limites (0-${currentSheet.columnCount - 1}) da aba ${currentSheet.title}. Pulando incremento.`);
-             return;
-         }
-        console.log(`[DEBUG] Carregando Linhas 1 e 2 (até ZZ) para ${currentSheet.title}`);
-        await currentSheet.loadCells('A1:ZZ2');
-        console.log(`[DEBUG] Linhas 1 e 2 carregadas para ${currentSheet.title}.`);
+        await currentSheet.loadInfo(); // Garante que rowCount e columnCount estão carregados
+        if (targetColumnIndex < 0 || targetColumnIndex >= currentSheet.columnCount) {
+            console.warn(`[AVISO incrementarContagem] Índice da coluna alvo (${targetColumnIndex}) fora dos limites (0-${currentSheet.columnCount - 1}) da aba ${currentSheet.title}. Pulando incremento.`);
+            return false; // <<< Retorna false se inválido
+        }
+        console.log(`[DEBUG incrementarContagem] Carregando Linhas 1 e 2 (até ZZ) para ${currentSheet.title}`);
+        await currentSheet.loadCells('A1:ZZ2'); // Carrega uma faixa ampla para garantir leitura do header da coluna alvo
+        console.log(`[DEBUG incrementarContagem] Linhas 1 e 2 carregadas para ${currentSheet.title}.`);
 
         let colunaAlvoLetra;
         try {
-             colunaAlvoLetra = currentSheet.getCell(0, targetColumnIndex).a1Address.replace(/[0-9]/g, '');
-             console.log(`[DEBUG] Letra da coluna alvo: ${colunaAlvoLetra}`);
+            colunaAlvoLetra = currentSheet.getCell(0, targetColumnIndex).a1Address.replace(/[0-9]/g, '');
+            console.log(`[DEBUG incrementarContagem] Letra da coluna alvo: ${colunaAlvoLetra}`);
         } catch(e) {
-             console.error(`[ERRO] Falha ao obter letra da coluna ${targetColumnIndex} em ${currentSheet.title}`, e);
-             throw new Error(`Falha ao obter letra da coluna ${targetColumnIndex} em ${currentSheet.title}.`);
+            console.error(`[ERRO incrementarContagem] Falha ao obter letra da coluna ${targetColumnIndex} em ${currentSheet.title}`, e);
+            return false; // <<< Retorna false em caso de erro
         }
-         await currentSheet.loadHeaderRow(2);
-         console.log(`[DEBUG] Cabeçalhos lidos para ${currentSheet.title}:`, currentSheet.headerValues);
-        const maxRow = Math.max(3, currentSheet.rowCount);
-        const rangeToLoad = `A3:${colunaAlvoLetra}${maxRow}`;
-        console.log(`[DEBUG] Carregando range de dados ${rangeToLoad} para ${currentSheet.title}`);
+
+        // Assume cabeçalho na linha 2 para 'Personagens'
+        const headerRowIndex = (currentSheet.title === 'Personagens') ? 2 : 1; 
+        await currentSheet.loadHeaderRow(headerRowIndex);
+        console.log(`[DEBUG incrementarContagem] Cabeçalhos lidos (linha ${headerRowIndex}) para ${currentSheet.title}:`, currentSheet.headerValues);
+        
+        // <<< CORREÇÃO: Variáveis definidas ANTES de usar >>>
+        const typeColHeader = 'Prim/Sec/Terc';
+        const typeColIndex = currentSheet.headerValues.indexOf(typeColHeader);
+        if (characterType && typeColIndex === -1) { // Só é erro se characterType foi especificado
+            console.error(`[ERRO incrementarContagem] Coluna "${typeColHeader}" não encontrada na aba "${currentSheet.title}", mas characterType foi especificado.`);
+            return false;
+        }
+        
+        const startDataRowIndex = headerRowIndex; // <<< Definido AQUI (Ex: 2)
+        const maxRow = Math.max(startDataRowIndex + 1, currentSheet.rowCount); // <<< Definido AQUI
+        const nomeColIndex = 0; // Coluna A <<< Definido AQUI
+
+        const colsToLoad = [nomeColIndex, targetColumnIndex]; // <<< Agora funciona
+        if (characterType && typeColIndex !== -1) {
+            colsToLoad.push(typeColIndex); // Adiciona a coluna de tipo se for filtrar
+        }
+        
+        const minLoadCol = Math.min(...colsToLoad);
+        const maxLoadCol = Math.max(...colsToLoad);
+        const minLoadColLetter = getColLetter(minLoadCol); // Requer a função getColLetter
+        const maxLoadColLetter = getColLetter(maxLoadCol);
+
+        const rangeToLoad = `${minLoadColLetter}${startDataRowIndex + 1}:${maxLoadColLetter}${maxRow}`; // <<< Agora funciona (Ex: A3:N1000)
+        console.log(`[DEBUG incrementarContagem] Carregando range de dados ${rangeToLoad} para ${currentSheet.title}`);
         await currentSheet.loadCells(rangeToLoad);
-        console.log(`[DEBUG] Células de dados carregadas para ${currentSheet.title}.`);
-        const playerSet = new Set(playerNames.map(p => p.toLowerCase()));
+        console.log(`[DEBUG incrementarContagem] Células de dados carregadas para ${currentSheet.title}.`);
+        
+        const playerSet = new Set(playerNames.map(p => String(p).toLowerCase())); // Garante que são strings
         const cellsToUpdate = [];
-        for (let rowIndex = 2; rowIndex < maxRow; rowIndex++) {
-             const nomeCell = currentSheet.getCell(rowIndex, 0);
-             const nomePlanilha = nomeCell.value?.toLowerCase();
-             if (nomePlanilha && playerSet.has(nomePlanilha)) {
-                console.log(`[DEBUG] Encontrado jogador ${nomePlanilha} na linha ${rowIndex + 1}.`);
-                const cellContagem = currentSheet.getCell(rowIndex, targetColumnIndex);
-                console.log(`[DEBUG] Célula ${cellContagem.a1Address}, Valor atual: ${cellContagem.value}`);
-                const currentValue = parseInt(cellContagem.value) || 0;
-                const newValue = currentValue + 1;
-                cellContagem.value = newValue; // Atribui o novo valor ao objeto cell
-                console.log(`[DEBUG] Célula ${cellContagem.a1Address}, Novo valor: ${newValue}`);
-                cellsToUpdate.push(cellContagem); // Adiciona o objeto cell modificado
-             }
+        
+        // Itera pelas linhas de DADOS (a partir de startDataRowIndex)
+        for (let rowIndex = startDataRowIndex; rowIndex < maxRow; rowIndex++) { // <<< Agora funciona
+            const nomeCell = currentSheet.getCell(rowIndex, nomeColIndex); // <<< Agora funciona
+            const nomePlanilha = nomeCell.value ? String(nomeCell.value).trim().toLowerCase() : null; // Converte para string antes de trim/toLowerCase
+
+            if (nomePlanilha && playerSet.has(nomePlanilha)) {
+                // <<< ADICIONADO: Verifica o tipo do personagem >>>
+                let typeMatch = true; // Assume que corresponde por padrão (se characterType for null)
+                if (characterType && typeColIndex !== -1) {
+                     const typeCell = currentSheet.getCell(rowIndex, typeColIndex);
+                     const typeValue = typeCell.value ? String(typeCell.value).trim() : '';
+                     typeMatch = (typeValue === characterType); // Verifica se o tipo na planilha é o requisitado
+                }
+                // <<< FIM ADIÇÃO >>>
+                
+                // Só incrementa se o nome E o tipo corresponderem (ou se tipo não for especificado)
+                if (typeMatch) {
+                    console.log(`[DEBUG incrementarContagem] Encontrado jogador ${nomePlanilha} na linha ${rowIndex + 1}${characterType ? ` com tipo ${characterType}` : ''}.`);
+                    const cellContagem = currentSheet.getCell(rowIndex, targetColumnIndex);
+                    console.log(`[DEBUG incrementarContagem] Célula ${cellContagem.a1Address}, Valor atual: ${cellContagem.value}`);
+                    
+                    const currentValue = parseInt(cellContagem.value) || 0; // Lê o valor
+                    const newValue = currentValue + 1;
+                    cellContagem.value = newValue; // Atribui o novo valor ao objeto cell
+                    console.log(`[DEBUG incrementarContagem] Célula ${cellContagem.a1Address}, Novo valor: ${newValue}`);
+                    cellsToUpdate.push(cellContagem); // Adiciona o objeto cell modificado
+                }
+            }
         }
+        
         if (cellsToUpdate.length > 0) {
-             console.log(`[DEBUG] Salvando ${cellsToUpdate.length} células atualizadas para ${currentSheet.title}.`);
-             await currentSheet.saveUpdatedCells(cellsToUpdate);
-             console.log(`Contagem incrementada para ${cellsToUpdate.length} jogadores na aba ${currentSheet.title}`);
+            console.log(`[DEBUG incrementarContagem] Salvando ${cellsToUpdate.length} células atualizadas para ${currentSheet.title}.`);
+            await currentSheet.saveUpdatedCells(cellsToUpdate);
+            console.log(`Contagem incrementada para ${cellsToUpdate.length} jogadores na aba ${currentSheet.title}`);
+             return true; // <<< ADICIONA RETORNO TRUE APÓS SALVAR
         } else {
-             console.log(`Nenhum jogador encontrado ou nenhuma célula para atualizar na aba ${currentSheet.title}`);
+            console.log(`Nenhum jogador encontrado ou nenhuma célula para atualizar na aba ${currentSheet.title}`);
+             return true; // <<< ADICIONA RETORNO TRUE SE NADA PRECISOU SER FEITO
         }
     } catch (incrementError) {
-        console.error(`[ERRO] Falha crítica ao incrementar contagem na aba ${sheet?.title}:`, incrementError);
-        // Não podemos enviar 'interaction.followUp' daqui,
-        // então apenas lançamos o erro para o manipulador de interação pegar
-        throw incrementError;
+        console.error(`[ERRO incrementarContagem] Falha crítica ao incrementar contagem na aba ${sheet?.title}:`, incrementError);
+        return false; // <<< RETORNA FALSE EM CASO DE ERRO
     }
 }
+
 
 // ===============================================
 // NOVAS FUNÇÕES: Gerenciamento de Tokens
 // ===============================================
 /**
  * Busca a contagem atual de tokens de um jogador.
- * ATUALIZADO: Busca a linha primeiro em "Primários" para resolver a tag, depois busca em "Tokens".
- * CORRIGIDO: Nome da variável playerRowTokens.
+ * ATUALIZADO: Busca a linha primeiro em "Personagens" para resolver a tag, depois busca em "Tokens".
  * @param {string} playerTag - A tag Discord do jogador (Nome#1234).
  * @returns {Promise<number>} - A quantidade de tokens (Coluna K). Retorna 0 se não encontrado ou erro.
  */
@@ -434,49 +488,48 @@ async function getPlayerTokenCount(playerTag) {
     try {
         await docSorteio.loadInfo(); // Garante que a planilha SORTEIO_SHEET_ID está carregada
         const sheetTokens = docSorteio.sheetsByTitle['Tokens'];
-        const sheetPrimarios = docSorteio.sheetsByTitle['Primários']; // <<< Carrega a aba Primários
-        if (!sheetTokens || !sheetPrimarios) {
-            console.error("[ERRO getPlayerTokenCount] Aba 'Tokens' ou 'Primários' não encontrada na planilha de Sorteio.");
+        // <<< ALTERAÇÃO: Usa "Personagens" >>>
+        const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+        if (!sheetTokens || !sheetPersonagens) {
+            console.error("[ERRO getPlayerTokenCount] Aba 'Tokens' ou 'Personagens' não encontrada na planilha de Sorteio.");
             return 0;
         }
         
         await sheetTokens.loadHeaderRow(1); // Assume header na linha 1
-        await sheetPrimarios.loadHeaderRow(2); // Assume header na linha 2 para Primários
+        await sheetPersonagens.loadHeaderRow(2); // Assume header na linha 2 para Personagens
         // getRows() busca os valores formatados (resultados das fórmulas)
         const rowsTokens = await sheetTokens.getRows();
-        const rowsPrimarios = await sheetPrimarios.getRows();
+        const rowsPersonagens = await sheetPersonagens.getRows();
 
-        // 1. Encontra a linha correspondente na aba "Primários"
+        // 1. Encontra a linha correspondente na aba "Personagens"
         // Compara ignorando maiúsculas/minúsculas e espaços
-        const playerRowPrimarios = rowsPrimarios.find(row => {
-            const tagValue = row.get('Nome'); // 'Nome' é o header da Coluna A em Primários
+        const playerRowPersonagens = rowsPersonagens.find(row => {
+            const tagValue = row.get('Nome'); // 'Nome' é o header da Coluna A
             return tagValue && String(tagValue).trim().toLowerCase() === playerTag.trim().toLowerCase();
         });
 
-        // Se não encontrar o jogador em Primários, não tem como buscar em Tokens pela tag resolvida
-        if (!playerRowPrimarios) {
-            console.warn(`[AVISO getPlayerTokenCount] Tag "${playerTag}" não encontrada na aba 'Primários'. Não é possível buscar tokens.`);
+        // Se não encontrar o jogador em Personagens, não tem como buscar em Tokens pela tag resolvida
+        if (!playerRowPersonagens) {
+            console.warn(`[AVISO getPlayerTokenCount] Tag "${playerTag}" não encontrada na aba 'Personagens'. Não é possível buscar tokens.`);
             return 0;
         }
 
-        // 2. Pega a tag RESOLVIDA (valor exibido) da aba Primários
-        const resolvedTag = playerRowPrimarios.get('Nome'); // Pega o valor da célula encontrada
+        // 2. Pega a tag RESOLVIDA (valor exibido) da aba Personagens
+        const resolvedTag = playerRowPersonagens.get('Nome'); // Pega o valor da célula encontrada
         if (!resolvedTag) {
-             console.warn(`[AVISO getPlayerTokenCount] Tag resolvida vazia encontrada para ${playerTag} em 'Primários'.`);
+             console.warn(`[AVISO getPlayerTokenCount] Tag resolvida vazia encontrada para ${playerTag} em 'Personagens'.`);
              return 0;
         }
 
         // 3. AGORA busca a tag resolvida na aba "Tokens"
-        const playerRowTokens = rowsTokens.find(row => { // <<< CORRIGIDO para 'playerRowTokens' e usa rowsTokens
-            // row.get('Tag') retorna o valor formatado/exibido
+        const playerRowTokens = rowsTokens.find(row => { 
             const tagValue = row.get('Nome');
-            // Compara ignorando maiúsculas/minúsculas e espaços extras para segurança
             return tagValue && String(tagValue).trim().toLowerCase() === String(resolvedTag).trim().toLowerCase();
         });
 
         // Se encontrou a linha correspondente em Tokens
-        if (playerRowTokens) { // <<< CORRIGIDO para usar 'playerRowTokens'
-            const tokenValue = playerRowTokens.get('Saldo'); // <<< CORRIGIDO para usar 'playerRowTokens' e 'Saldo'
+        if (playerRowTokens) { 
+            const tokenValue = playerRowTokens.get('Saldo'); 
             const tokenCount = parseInt(tokenValue);
             return !isNaN(tokenCount) ? tokenCount : 0; // Retorna o número ou 0 se inválido
         } else {
@@ -836,6 +889,7 @@ async function preloadInventoryEmbedData() {
         await sheetTokens.loadHeaderRow(1);
         const rowsTokens = await sheetTokens.getRows();
         const tokenDataMap = new Map(rowsTokens.map(r => [String(r.get('Nome')).trim().toLowerCase(), parseInt(r.get('Saldo')) || 0]));
+
 
         // 2. Carregar Níveis/Mesas (Aba Personagens)
         const sheetChars = docSorteio.sheetsByTitle['Personagens'];

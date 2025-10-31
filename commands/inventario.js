@@ -75,7 +75,7 @@ module.exports = {
             if (characters.length === 1) {
                 const selectedCharRow = characters[0];
                 //await registerChannel(charRow, interaction.channel.id);
-                const embed = await buildInventoryEmbed(charRow);
+                const embed = await buildInventoryEmbed(selectedCharRow);
                 // Envia a nova mensagem (ou edita a resposta do defer)
                 const message = await interaction.editReply({ embeds: [embed] });
                 // Registra o canal e ID da mensagem, passando o client

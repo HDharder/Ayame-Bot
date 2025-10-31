@@ -161,6 +161,26 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
+    // --- Roteador de Autocomplete ---
+    else if (interaction.isAutocomplete()) {
+        command = null; // Reseta command
+        // Itera usando 'cmd'
+        for (const cmd of client.commands.values()) {
+            // Verifica se 'cmd' lida com este autocomplete
+            // Usamos o NOME DO COMANDO como a chave
+            if (cmd.autocomplete && cmd.autocomplete.includes(interaction.commandName)) {
+                command = cmd; // Atribui à variável externa 'command'
+                break;
+            }
+        }
+        // Chama o handler se encontrado
+        if (command && command.handleAutocomplete) {
+            await command.handleAutocomplete(interaction);
+        } else {
+             console.warn(`Nenhum handler de autocomplete encontrado para: ${interaction.commandName}`);
+        }
+    }
+
   } catch (error) {
     // Um 'catch' genérico para qualquer erro
     console.error("Erro GERAL na interação:", error); // Ajusta nome do log

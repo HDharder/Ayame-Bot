@@ -1,6 +1,20 @@
 {
   "updates": [
     {
+      "version": "1.3.2",
+      "date": "2025-10-31",
+      "title": "Comando de Ajuda & Sistema de Autocomplete",
+      "features": [
+        "**Novo Comando `/help`:** Adicionado comando `/help` para listar todos os comandos ou mostrar detalhes sobre um comando específico (uso, permissões)."
+      ],
+      "fixes": [],
+      "backend": [
+        "Adicionado suporte para interações `isAutocomplete()` ao `index.js` (roteador de interações).",
+        "O comando `/help` usa o novo sistema de autocomplete para sugerir nomes de comandos.",
+        "Criado o ficheiro `help.json` para armazenar dinamicamente os textos de ajuda do bot."
+      ]
+    },
+    {
       "version": "1.3.1",
       "date": "2025-10-29",
       "title": "Otimização de Atualização de Inventário",

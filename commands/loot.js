@@ -108,7 +108,7 @@ module.exports = {
 
         // Se não houver mesas, informa e encerra
         if (mesasAbertas.length === 0) {
-          await interaction.editReply('Você não possui mesas registradas que estejam pendentes de finalização.');
+          await interaction.editReply('Você não possui mesas registradas que estejam pendentes de finalização. Já usou o `/registrar-mesa` ?');
           return;
         }
 

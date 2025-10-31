@@ -254,7 +254,22 @@ module.exports = {
 
         // Chama a função importada, passando a aba "Personagens"
         // Chama UMA VEZ com todos os jogadores e a sheet correta
-        await incrementarContagem(sheetPersonagens, todosJogadores, targetColIndex);
+        //await incrementarContagem(sheetPersonagens, todosJogadores, targetColIndex);
+        let countSuccess = true; // Flag para rastrear sucesso
+        if (primarios.length > 0) {
+            const successPrim = await incrementarContagem(sheetPersonagens, primarios, targetColIndex, '1'); // Passa '1' para primário
+            if (!successPrim) countSuccess = false;
+        }
+        if (secundarios.length > 0) {
+            const successSec = await incrementarContagem(sheetPersonagens, secundarios, targetColIndex, '2'); // Passa '2' para secundário
+            if (!successSec) countSuccess = false;
+        }
+
+        // Opcional: Adicionar um aviso se alguma contagem falhar
+        if (!countSuccess) {
+             console.warn("[AVISO Registrar Mesa] Falha ao incrementar a contagem de mesas para um ou mais jogadores/tipos.");
+             // Poderia adicionar um aviso na resposta ao usuário também
+        }
 
         // --- Finalização ---
         let jogadoresRegistradosString = todosJogadores.map(playerName => {
