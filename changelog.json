@@ -1,6 +1,24 @@
 {
   "updates": [
     {
+      "version": "1.3.3",
+      "date": "2025-10-31",
+      "title": "Revisão do /relatorio & Melhorias de Inventário",
+      "features": [
+        "**`/relatorio` agora atualiza o inventário:** O comando `/relatorio` agora atualiza o inventário dos jogadores (gold e itens) ao finalizar, tal como o `/loot`.",
+        "**Gold Opcional no `/relatorio`:** O parâmetro `gold_total` agora é opcional. Se deixado em branco, o bot rolará o gold automaticamente (usando a lógica do `/loot`).",
+        "**Gold Extra no `/relatorio`:** Adicionado um botão 'Gold Extra' na interface de drops para adicionar bônus de gold individualmente por jogador.",
+        "**Drops 'Misc' no `/relatorio`:** Adicionada a opção e o botão `drop_misc` para itens que não precisam de validação."
+      ],
+      "fixes": [
+        "**Categorização de Itens:** Corrigido o sistema de atualização de inventário (`/loot` e `/relatorio`) para salvar itens nas colunas corretas (ex: a aba 'Poções' agora salva em 'Consumíveis Mágicos', e a aba 'Itens' salva em 'Itens Mágicos').",
+        "**Categorização de Mundanos:** 'Itens Mundanos' agora são classificados corretamente como 'Armas' ou 'Escudos/Armaduras' no inventário, com base na coluna 'Type' da Tabela de Craft."
+      ],
+      "backend": [
+        "O parser de itens (`parseItemInput`) agora suporta a sintaxe de colchetes (ex: `Arma +1 [Espada Longa]`), salvando o nome completo mas usando o nome base (`Arma +1`) para validação e categorização."
+      ]
+    },
+    {
       "version": "1.3.2",
       "date": "2025-10-31",
       "title": "Comando de Ajuda & Sistema de Autocomplete",
