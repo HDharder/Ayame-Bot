@@ -187,7 +187,8 @@ async function handleLootCalculation(interaction, state, originalInteractionId) 
         ...(state.drops.materiais||[]), 
         ...(state.drops.ervas||[]), 
         ...(state.drops.pocoes||[]),
-        ...(state.drops.misc||[]) // <<< ADICIONADO
+        ...(state.drops.misc||[]), // <<< ADICIONADO
+        ...(state.drops.gold_extra||[])
     ];
     
     const playersString = formatPlayerList(state.players, false, true); 
@@ -429,7 +430,7 @@ async function handleEncerrarMesaClick(interaction, state, lootMessageId) {
         const allPlayerChanges = []; 
 
         for (const player of state.players) {
-            
+            /*
             // <<< LÓGICA DE DOBRAR ITENS >>>
             let finalGold = state.options.naoRolarLoot ? 0 : state.goldFinalPerPlayer;
             let finalItems = player.items || []; // items já contém { name, validationName, amount, isPredefined }
@@ -449,7 +450,44 @@ async function handleEncerrarMesaClick(interaction, state, lootMessageId) {
             const changes = {
                 gold: finalGold + (player.extraGold || 0), // Adiciona gold extra (que é 0 no /loot)
                 itemsToAdd: finalItems
+            };*/
+
+            // +++ NOVA LÓGICA (combina Gold Extra e Itens Pré-definidos) +++
+            let finalGold = state.options.naoRolarLoot ? 0 : state.goldFinalPerPlayer;
+            let playerItems = player.items || []; 
+            let extraGoldFromItems = 0; 
+            const realItemsToAdd = []; 
+ 
+            if (player.doubleActive) {
+                finalGold *= 2; 
+            }
+ 
+            // Itera sobre os itens que o jogador pegou
+            for (const item of playerItems) {
+                // Verifica se o item é "XXX PO"
+                const goldMatch = item.name.match(/^(\d+(?:[\.,]\d+)?)\s*PO$/);
+                let itemAmount = item.amount;
+ 
+                // Dobra a quantidade se for pré-definido E double estiver ativo
+                if (player.doubleActive && item.isPredefined) {
+                    itemAmount *= 2;
+                }
+ 
+                if (goldMatch) {
+                    // É um item de gold, soma o valor
+                    const goldValue = parseFloat(goldMatch[1].replace(',', '.'));
+                    extraGoldFromItems += (goldValue * itemAmount);
+                } else {
+                    // É um item real, adiciona à lista
+                    realItemsToAdd.push({ ...item, amount: itemAmount });
+                }
+            }
+ 
+            const changes = {
+                gold: finalGold + extraGoldFromItems, // Soma o gold base + o gold dos "itens"
+                itemsToAdd: realItemsToAdd // Passa apenas os itens reais
             };
+            // +++ FIM DA NOVA LÓGICA +++
 
             if (changes.gold !== 0 || changes.itemsToAdd.length > 0) {
                 console.log(`[INFO Encerrar Mesa] Adicionando ao lote: ${player.tag} - ${player.char} (Gold: ${changes.gold.toFixed(2)}, Itens: ${changes.itemsToAdd.length})`);

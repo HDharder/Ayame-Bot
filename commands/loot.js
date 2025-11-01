@@ -17,9 +17,9 @@ const {
 const { checkAuth, AuthLevels } = require('../utils/auth.js');
 
 // Importações de Lógica - Google e Cálculo
-const { docControle, docCraft, lookupIds, getPlayerTokenCount } = require('../utils/google.js'); // <<< CAMINHO CORRIGIDO
+const { docControle, docCraft, lookupIds, getPlayerTokenCount } = require('../utils/google.js');
 // Importações de Lógica - Utilitários de Itens
-const { validateItems, parseItemInput } = require('../utils/itemUtils.js'); // <<< USA O NOVO PARSER
+const { validateItems, parseItemInput } = require('../utils/itemUtils.js');
 // Importações de Lógica - Utilitários de Seleção/Devolução de Player
 const { processItemSelection, processItemReturn } = require('../utils/playerLootUtils.js');
 // Importações de Lógica - Utilitários Gerais E LÓGICA DE BOTÕES
@@ -44,15 +44,14 @@ module.exports = {
         .setDescription('Opcional: O nome/título da mesa para o anúncio.')
         .setRequired(false)
     )
-    // <<< PARÂMETRO RENOMEADO >>>
     .addBooleanOption(option => option.setName('nao_rolar_loot_com_vantagem').setDescription('Opcional: A rolagem de gold será SEM vantagem? (Default: False)').setRequired(false))
     .addBooleanOption(option => option.setName('drop_de_mundanos').setDescription('Opcional: A mesa teve drop de Itens Mundanos? (Default: False)').setRequired(false))
     .addBooleanOption(option => option.setName('drop_de_itens').setDescription('Opcional: A mesa teve drop de Itens Mágicos? (Default: False)').setRequired(false))
     .addBooleanOption(option => option.setName('drop_de_materiais').setDescription('Opcional: A mesa teve drop de Materiais? (Default: False)').setRequired(false))
     .addBooleanOption(option => option.setName('drop_de_ervas').setDescription('Opcional: A mesa teve drop de Ervas? (Default: False)').setRequired(false))
     .addBooleanOption(option => option.setName('drop_de_pocoes').setDescription('Opcional: A mesa teve drop de Poções? (Default: False)').setRequired(false))
-    // <<< PARÂMETRO NOVO >>>
     .addBooleanOption(option => option.setName('drop_de_misc').setDescription('Opcional: A mesa teve drop de Itens "Misc"? (Default: False)').setRequired(false))
+    .addBooleanOption(option => option.setName('gold_extra').setDescription('Opcional: A mesa teve drop de Gold Extra? (Habilita input)').setRequired(false))
     .addBooleanOption(option => option.setName('nao_rolar_loot').setDescription('Opcional: Ignorar a rolagem de gold para esta mesa? (Default: False)').setRequired(false)),
 
   // 2. QUAIS INTERAÇÕES ESTE ARQUIVO GERENCIA
@@ -63,7 +62,8 @@ module.exports = {
     'modal_loot_materiais',
     'modal_loot_ervas',
     'modal_loot_pocoes',
-    'modal_loot_misc', // <<< ADICIONADO
+    'modal_loot_misc',
+    'modal_loot_gold_extra', // <<< ADICIONADO
     'modal_relatorio'
   ],
   buttons: [
@@ -72,7 +72,8 @@ module.exports = {
     'loot_add_materiais',
     'loot_add_ervas',
     'loot_add_pocoes',
-    'loot_add_misc', // <<< ADICIONADO
+    'loot_add_misc',
+    'loot_add_gold_extra', // <<< ADICIONADO
     'loot_calcular',
     'pegar_loot',
     'toggle_double_gold', 
@@ -93,13 +94,14 @@ module.exports = {
     try {
         const options = {
           nomeMesa: interaction.options.getString('nome') || '',
-          nao_rolar_loot_com_vantagem: interaction.options.getBoolean('nao_rolar_loot_com_vantagem') ?? false, // <<< LÊ O NOVO PARÂMETRO
+          nao_rolar_loot_com_vantagem: interaction.options.getBoolean('nao_rolar_loot_com_vantagem') ?? false,
           dropMundanos: interaction.options.getBoolean('drop_de_mundanos') ?? false,
           dropItens: interaction.options.getBoolean('drop_de_itens') ?? false,
           dropMateriais: interaction.options.getBoolean('drop_de_materiais') ?? false,
           dropErvas: interaction.options.getBoolean('drop_de_ervas') ?? false,
           dropPocoes: interaction.options.getBoolean('drop_de_pocoes') ?? false,
-          dropMisc: interaction.options.getBoolean('drop_de_misc') ?? false, // <<< LÊ O NOVO PARÂMETRO
+          dropMisc: interaction.options.getBoolean('drop_de_misc') ?? false,
+          goldExtra: interaction.options.getBoolean('gold_extra') ?? false, 
           naoRolarLoot: interaction.options.getBoolean('nao_rolar_loot') ?? false,
         };
 
@@ -183,7 +185,7 @@ module.exports = {
 
           state.step = 'input_drops';
           state.selectedMessageId = selectedMessageId;
-          state.drops = { mundanos: [], itens: [], materiais: [], ervas: [], pocoes: [], misc: [] }; // <<< INICIALIZA misc
+          state.drops = { mundanos: [], itens: [], materiais: [], ervas: [], pocoes: [], misc: [], gold_extra: [] }; 
 
           const buttons = [];
           if (state.options.dropMundanos) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_mundanos|${originalInteractionId}`).setLabel('Adicionar Mundanos').setStyle(ButtonStyle.Secondary)); }
@@ -191,15 +193,14 @@ module.exports = {
           if (state.options.dropMateriais) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_materiais|${originalInteractionId}`).setLabel('Adicionar Materiais').setStyle(ButtonStyle.Secondary)); }
           if (state.options.dropErvas) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_ervas|${originalInteractionId}`).setLabel('Adicionar Ervas').setStyle(ButtonStyle.Secondary)); }
           if (state.options.dropPocoes) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_pocoes|${originalInteractionId}`).setLabel('Adicionar Poções').setStyle(ButtonStyle.Secondary)); }
-          // <<< ADICIONA BOTÃO MISC >>>
           if (state.options.dropMisc) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_misc|${originalInteractionId}`).setLabel('Adicionar Misc').setStyle(ButtonStyle.Secondary)); }
+          if (state.options.goldExtra) { buttons.push(new ButtonBuilder().setCustomId(`loot_add_gold_extra|${originalInteractionId}`).setLabel('Adicionar Gold Extra').setStyle(ButtonStyle.Secondary)); }
           
           buttons.push(new ButtonBuilder()
               .setCustomId(`loot_calcular|${originalInteractionId}`)
               .setLabel(buttons.length > 0 ? 'Finalizar Drops e Calcular Loot' : 'Calcular Loot de Gold')
               .setStyle(ButtonStyle.Success));
 
-          // <<< CORRIGIDO: Suporte para Múltiplas Linhas >>>
           const row1 = new ActionRowBuilder().addComponents(buttons.slice(0, 5));
           const row2 = buttons.length > 5 ? new ActionRowBuilder().addComponents(buttons.slice(5)) : null;
           
@@ -238,13 +239,11 @@ module.exports = {
 
           const selectedItemValues = interaction.values || []; 
 
-          // Chama a função utilitária (agora em playerLootUtils.js)
           processItemSelection(state, player, selectedItemValues); 
 
           const lootMessage = await interaction.channel.messages.fetch(lootMessageId);
           if (!lootMessage) { throw new Error("Mensagem pública de loot não encontrada para editar."); }
 
-          // Chama funções utilitárias para formatar
           const playersString = formatPlayerList(state.players, true, true); 
           const dropsString = formatDropsList(state.allDrops); 
           const newMessageContent = buildLootMessageContent(state, playersString, dropsString); 
@@ -278,27 +277,60 @@ module.exports = {
 
       let sheetName = ''; 
       let dropType = ''; 
-      let isMisc = false; // Flag para pular validação
+      let isMisc = false;
       
       if (action === 'modal_loot_mundanos') { sheetName = 'Itens Mundanos'; dropType = 'mundanos'; }
       else if (action === 'modal_loot_itens') { sheetName = 'Itens'; dropType = 'itens'; }
       else if (action === 'modal_loot_materiais') { sheetName = 'Materiais'; dropType = 'materiais'; }
       else if (action === 'modal_loot_ervas') { sheetName = 'Ervas'; dropType = 'ervas'; }
       else if (action === 'modal_loot_pocoes') { sheetName = 'Poções'; dropType = 'pocoes'; }
-      // <<< ADICIONADO: Caso Misc >>>
       else if (action === 'modal_loot_misc') { sheetName = 'Misc'; dropType = 'misc'; isMisc = true; } 
+      // +++ BLOCO ADICIONADO: Lógica para o novo Modal de Gold Extra +++
+      else if (action === 'modal_loot_gold_extra') {
+          dropType = 'gold_extra';
+          const items = [];
+          // Regex ATUALIZADO: Aceita "100" ou "100.50", com ou sem PO, com ou sem *
+          const goldRegex = /(?:(\d+)\s*x\s*)?(\d+(?:[\.,]\d+)?)(?:\s*PO)?(\*?)/gi;
+          let match;
+          
+          while ((match = goldRegex.exec(input)) !== null) {
+              const amount = parseInt(match[1] || '1', 10); // Quantidade (ex: 2x)
+              const value = parseFloat(match[2].replace(',', '.')); // Valor (ex: 100.50)
+              const isPredefined = match[3] === '*'; // Se tem o *
+              const itemName = `${value.toFixed(2)} PO`; // <<< CORREÇÃO: Garante "PO" e casas decimais
+
+              // Adiciona ao array de itens
+              items.push({
+                  name: itemName,
+                  validationName: itemName, 
+                  amount: amount, 
+                  isPredefined: isPredefined, 
+                  isMisc: true 
+              });
+          }
+          
+          if (items.length === 0) {
+              await interaction.followUp({ content: 'Formato inválido. Use `100 PO`, `2x 100*` ou `50.25`.', flags: [MessageFlagsBitField.Flags.Ephemeral] });
+              return;
+          }
+          
+          state.drops[dropType] = items;
+          sheetName = 'Gold Extra'; 
+          isMisc = true; 
+      }
       else {
           console.warn("Modal de loot desconhecido:", action);
           await interaction.followUp({ content: 'Tipo de modal desconhecido.', flags: [MessageFlagsBitField.Flags.Ephemeral] });
           return;
       }
       
-      // <<< CORRIGIDO: Chama parseItemInput com o flag 'isMisc' >>>
-      const items = parseItemInput(input, isMisc); // Retorna { name, validationName, amount, isPredefined, isMisc }
+      let items;
+      if (action !== 'modal_loot_gold_extra') {
+          items = parseItemInput(input, isMisc); 
+      }
 
       try {
-        // <<< CORRIGIDO: Pula validação se for Misc >>>
-        if (!isMisc) {
+        if (!isMisc) { 
             const notFound = await validateItems(items, sheetName, docCraft);
             if (notFound.length > 0) {
               await interaction.followUp({
@@ -309,26 +341,25 @@ module.exports = {
             }
         }
 
-        state.drops[dropType] = items;
+        if (action !== 'modal_loot_gold_extra') {
+            state.drops[dropType] = items;
+        }
 
         if (!state.dropsMessageId) { throw new Error("ID da mensagem de drops não encontrado no estado."); }
         const dropsMessage = await interaction.channel.messages.fetch(state.dropsMessageId);
         if (!dropsMessage) { throw new Error("Mensagem de drops não encontrada para editar."); }
 
-        // Remonta a string de drops adicionados
         let contentBase = dropsMessage.content.split('\n\n**Drops Adicionados:**')[0]; 
         const currentComponents = dropsMessage.components; 
         let dropsDisplayString = "**Drops Adicionados:**\n";
         let hasAnyDrops = false;
         
-        // <<< ADICIONADO: 'misc' ao loop >>>
-        const dropTypes = ['mundanos', 'itens', 'materiais', 'ervas', 'pocoes', 'misc'];
+        const dropTypes = ['mundanos', 'itens', 'materiais', 'ervas', 'pocoes', 'misc', 'gold_extra'];
         dropTypes.forEach(dtype => {
             if (state.drops[dtype] && Array.isArray(state.drops[dtype]) && state.drops[dtype].length > 0) {
                 hasAnyDrops = true;
                 const itemsString = state.drops[dtype]
                     .filter(i => i && i.name && typeof i.amount === 'number' && i.amount > 0) 
-                    // <<< CORRIGIDO: Mostra o * >>>
                     .map(i => `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`) 
                     .join(', ');
                 if (itemsString) { 
@@ -336,6 +367,7 @@ module.exports = {
                     if (dtype === 'mundanos') label = 'Itens Mundanos';
                     if (dtype === 'pocoes') label = 'Poções';
                     if (dtype === 'misc') label = 'Misc';
+                    if (dtype === 'gold_extra') label = 'Gold Extra';
                     dropsDisplayString += `${label}: \`${itemsString}\`\n`;
                 }
             }
@@ -346,7 +378,7 @@ module.exports = {
           content: `${contentBase}\n\n${dropsDisplayString}`,
           components: currentComponents
         });
-        await interaction.followUp({ content: `${sheetName} adicionados/atualizados com sucesso!`, flags: [MessageFlagsBitField.Flags.Ephemeral] });
+        //await interaction.followUp({ content: `${sheetName} adicionados/atualizados com sucesso!`, flags: [MessageFlagsBitField.Flags.Ephemeral] });
 
       } catch (e) {
         console.error("Erro ao validar/processar itens do modal:", e);
@@ -381,8 +413,8 @@ module.exports = {
   async handleButton(interaction) {
     const customIdParts = interaction.customId.split('|');
     const action = customIdParts[0];
-    const id = customIdParts[1]; // originalInteractionId ou lootMessageId
-    const playerIdForAction = customIdParts[2]; // Para finalizar/devolver
+    const id = customIdParts[1]; 
+    const playerIdForAction = customIdParts[2]; 
 
     let state;
     let lootMessageId = null;
@@ -408,7 +440,6 @@ module.exports = {
         // Lógica específica abaixo
     } else {
         console.warn("Ação de botão desconhecida:", action, interaction.customId);
-        // Tenta dar defer silencioso para evitar "Interação falhou" se outro bot não respondeu
         if (!interaction.replied && !interaction.deferred) await interaction.deferUpdate().catch(()=>{});
         return; 
     }
@@ -443,16 +474,23 @@ module.exports = {
                modal.addComponents(new ActionRowBuilder().addComponents(
                 new TextInputBuilder().setCustomId('loot_input').setLabel("Poções (Ex: 2x Poção Cura, Poção Força*)").setStyle(TextInputStyle.Paragraph).setRequired(true)
               ));
-          } else if (action === 'loot_add_misc') { // <<< ADICIONADO
+          } else if (action === 'loot_add_misc') { 
               modal = new ModalBuilder().setCustomId(`modal_loot_misc|${originalInteractionId}`).setTitle('Adicionar Itens Misc');
                modal.addComponents(new ActionRowBuilder().addComponents(
                 new TextInputBuilder().setCustomId('loot_input').setLabel("Itens Misc (Ex: 1x Mapa, 1x Chave*)").setStyle(TextInputStyle.Paragraph).setRequired(true)
               ));
+          // +++ BLOCO ADICIONADO +++
+          } else if (action === 'loot_add_gold_extra') {
+             modal = new ModalBuilder().setCustomId(`modal_loot_gold_extra|${originalInteractionId}`).setTitle('Adicionar Gold Extra (Drops)');
+              modal.addComponents(new ActionRowBuilder().addComponents(
+               new TextInputBuilder().setCustomId('loot_input').setLabel("Gold Extra (Ex: 200 PO, 2x 100*, 50)").setStyle(TextInputStyle.Paragraph).setRequired(true)
+             ));
           }
           
           if (modal) {
             await interaction.showModal(modal); 
           } else {
+            // Este 'else' agora é desnecessário se todos os botões tiverem um modal
             console.warn(`[AVISO handleButton] Ação ${action} não correspondeu a nenhum modal.`);
             if (!interaction.replied && !interaction.deferred) {
               await interaction.reply({ content: 'Formulário não identificado.', flags: [MessageFlagsBitField.Flags.Ephemeral]});
@@ -507,7 +545,7 @@ module.exports = {
 
             // Atualiza a MENSAGEM ONDE O BOTÃO FOI CLICADO
             const newDoubleLabel = player.doubleActive
-                ? `Desativar Dobro (Custo: 1 "Double Up")` // <<< Custo atualizado
+                ? `Desativar Dobro (Custo: 1 "Double Up")` 
                 : `Ativar Dobro (Custo: 1 "Double Up")`;
             const newDoubleStyle = player.doubleActive ? ButtonStyle.Danger : ButtonStyle.Primary; 
             const updatedDoubleButton = new ButtonBuilder()
@@ -574,7 +612,8 @@ module.exports = {
           if (player.doubleActive) {
               finalGold *= 2; 
               finalItems = finalItems.map(item => {
-                  if (item.isPredefined) {
+                  // Dobra itens E gold extra pré-definidos
+                  if (item.isPredefined) { 
                       return { ...item, amount: item.amount * 2 };
                   }
                   return item;
@@ -582,8 +621,24 @@ module.exports = {
           }
 
           if (finalItems.length > 0) { 
-              pickedText = "Itens pegos:\n" + finalItems.map(i => `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`).join('\n'); // Mostra *
+              pickedText = "Itens pegos:\n" + finalItems.map(i => {
+                  // Não mostra "PO" para os itens de gold aqui, o gold total já inclui
+                  if (i.name.endsWith(' PO')) return null; 
+                  return `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`;
+              }).filter(Boolean).join('\n'); // Filtra os nulos
+              if (pickedText.trim() === "") pickedText = "Nenhum item pego.";
           }
+          
+          // Adiciona o gold extra pego (que não é "PO base")
+          let extraGoldFromItems = 0;
+          finalItems.forEach(item => {
+              const goldMatch = item.name.match(/^(\d+(?:[\.,]\d+)?)\s*PO$/);
+              if (goldMatch) {
+                  const goldValue = parseFloat(goldMatch[1].replace(',', '.'));
+                  extraGoldFromItems += (goldValue * item.amount); // amount já foi dobrado
+              }
+          });
+          finalGold += extraGoldFromItems; // Soma o gold base + gold extra
           
           await interaction.editReply({
               content: `Seleção finalizada para ${userMention(player.id)} (${player.char}).\n${finalGold.toFixed(2)} PO foram adicionados${player.doubleActive ? ' (Dobro Ativado!)' : ''}.\n\n${pickedText}`,
