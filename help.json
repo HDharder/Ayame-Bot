@@ -3,37 +3,37 @@
     "name": "/loot",
     "description": "Inicia o processo de registro de loot de uma mesa que já foi registrada.",
     "permissions": "Narrador, Staff",
-    "usage": "**Pré-requisito:** O Mestre deve ter usado `/registrar-mesa` para esta mesa.\n1. Use `/loot`.\n2. Selecione a mesa (ela só aparecerá se foi registrada).\n3. (Opcional) Adicione itens/materiais/etc.\n4. Clique em 'Calcular Loot' para gerar a mensagem de distribuição.\n5. Os jogadores clicam em 'Pegar Loot' para selecionar seus itens.\n6. O Mestre clica em 'Encerrar Mesa' para salvar tudo.\n**Se falhar:** Use o comando `/relatorio` como alternativa manual."
+    "usage": "**Pré-requisito:** O Mestre deve ter usado `/registrar-mesa` para esta mesa.\n1. Use `/loot`.\n2. Selecione a mesa (ela só aparecerá se foi registrada).\n3. (Opcional) Adicione os drops de itens/materiais/misc etc. Itens marcados com `*` no final (ex: `Poção*`) serão dobrados se o jogador usar 'Double Gold'.\n4. Clique em 'Calcular Loot' para gerar a mensagem de distribuição.\n5. Os jogadores clicam em 'Pegar Loot' para selecionar seus itens e ativar o 'Double Gold' (que dobra o gold E os itens marcados com `*`).\n6. O Mestre clica em 'Encerrar Mesa' para salvar tudo nas planilhas.\n**Se falhar:** Use o comando `/relatorio` como alternativa manual."
   },
   "registrar-mesa": {
     "name": "/registrar-mesa",
     "description": "Registra os jogadores sorteados em uma mesa anunciada no histórico.",
     "permissions": "Narrador, Staff",
-    "usage": "**Pré-requisito:** O Mestre deve ter usado `/abrir-mesa` para criar o anúncio da mesa.\n1. Use `/registrar-mesa` após o sorteio.\n2. Indique os jogadores nos parâmetros `primario` e `secundario` (pode ser menção @ ou tag `Nome#0000`).\n3. Selecione a mesa (do `/abrir-mesa`) à qual eles pertencem.\n4. O bot irá atualizar a planilha 'Historico' e a contagem de 'Mesas Jogadas' na aba 'Personagens'."
+    "usage": "**Pré-requisito:** O Mestre deve ter usado `/abrir-mesa` para criar o anúncio da mesa.\n1. Use `/registrar-mesa`.\n2. Indique os jogadores nos parâmetros `primario` e `secundario`.\n3. Selecione a mesa (do `/abrir-mesa`) à qual eles pertencem.\n4. O bot irá atualizar a planilha 'Historico' e a contagem de 'Mesas Jogadas' (na coluna da semana correta) na aba 'Personagens'."
   },
   "abrir-mesa": {
     "name": "/abrir-mesa",
     "description": "Cria um anúncio de mesa com inscrições via reação.",
     "permissions": "Narrador, Staff",
-    "usage": "1. Use `/abrir-mesa` e preencha todos os parâmetros (emote, níveis, data, duração).\n2. O bot criará um anúncio público.\n3. Use o botão 'Fechar Inscrição' para encerrar e gerar o `/sortear`.\n4. Use 'Editar Mesa' para corrigir informações.\n5. Use 'Cancelar Mesa' para apagar o anúncio e o registro.\n**Importante:** Este comando é o primeiro passo. Você precisará usar `/registrar-mesa` depois."
+    "usage": "1. Use `/abrir-mesa` e preencha todos os parâmetros.\n2. O bot criará um anúncio público. O Mestre pode reagir com o emote da mesa para fechar inscrições ou com ❌ para cancelar.\n3. Após fechar, use o botão 'Efetuar Sorteio'.\n**Importante:** Este comando é o primeiro passo. Você precisará usar `/registrar-mesa` depois."
   },
   "inventario": {
     "name": "/inventario",
     "description": "Exibe seu inventário ou registra um canal dedicado para ele.",
     "permissions": "Qualquer jogador (em canais permitidos)",
-    "usage": "1. Use `/inventario` num canal de fórum (post) na categoria de inventários.\n2. Se você tiver múltiplos personagens, selecione qual deles será 'dono' deste canal.\n3. O bot exibirá seu inventário e salvará este canal. O loot de mesas encerradas atualizará esta mensagem automaticamente.\n**Importante:** Um canal só pode ser registrado por um único jogador. Se o canal já pertencer a outro jogador, o comando falhará."
+    "usage": "1. Use `/inventario` num canal de fórum (post) na categoria de inventários.\n2. Se você tiver múltiplos personagens, selecione qual deles será 'dono' deste canal.\n3. O bot exibirá seu inventário e salvará este canal. O loot de mesas encerradas (`/loot` ou `/relatorio`) atualizará esta mensagem automaticamente.\n**Importante:** Um canal só pode ser registrado por um único jogador."
   },
   "relatorio": {
     "name": "/relatorio",
-    "description": "Cria manualmente o log de finalização de uma mesa (alternativa ao /loot).",
+    "description": "Alternativa manual ao /loot. Registra loot e atualiza o inventário.",
     "permissions": "Narrador, Staff",
-    "usage": "Use este comando **apenas se o `/loot` falhar**.\n1. Use `/relatorio` e forneça o gold TOTAL rolado (antes do bastião).\n2. Selecione a mesa registrada.\n3. (Opcional) Adicione itens manualmente para cada jogador.\n4. Ao finalizar, o bot cria o log e atualiza as planilhas (sem atualizar o inventário)."
+    "usage": "Use este comando **se o `/loot` falhar ou para entradas manuais**.\n1. Use `/relatorio`. O parâmetro `gold_total` é opcional; se deixado vazio, o bot rolará o gold automaticamente.\n2. Selecione a mesa registrada.\n3. Use os botões para adicionar drops (`Misc`, `Itens`, etc.) e 'Gold Extra' para cada jogador.\n4. Itens com colchetes (ex: `Arma +1 [Espada Longa]`) serão validados como `Arma +1` mas salvos com o nome completo.\n5. Ao finalizar, o bot cria o log e **atualiza o inventário** de todos os jogadores (somando o gold base + gold extra)."
   },
   "sortear": {
     "name": "/sortear",
     "description": "Realiza o sorteio de vagas do RPG (manual).",
     "permissions": "Narrador, Staff",
-    "usage": "Usado principalmente se o botão 'Fechar Inscrição' do `/abrir-mesa` falhar, ou para sorteios manuais.\n1. Use `/sortear` e cole a lista de inscritos (separados por espaço ou linha).\n2. Clique em 'Efetuar Sorteio'.\n3. (Opcional) Digite os níveis para filtrar os jogadores elegíveis (ex: `1,2,3`).\n4. O bot fará o sorteio baseado na prioridade (tempo sem jogar)."
+    "usage": "Usado principalmente se o botão 'Fechar Inscrição' do `/abrir-mesa` falhar, ou para sorteios manuais.\n1. Use `/sortear` e cole a lista de inscritos.\n2. Clique em 'Efetuar Sorteio'.\n3. (Opcional) Digite os níveis para filtrar os jogadores elegíveis (ex: `1,2,3`).\n4. O bot fará o sorteio baseado na prioridade."
   },
   "updates": {
     "name": "/updates",

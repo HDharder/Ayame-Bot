@@ -1,6 +1,24 @@
 {
   "updates": [
     {
+      "version": "1.3.4",
+      "date": "2025-11-01",
+      "title": "Melhorias no /loot: Itens Pré-definidos e Correções de Lógica",
+      "features": [
+        "Adicionada a opção `drop_de_misc` ao comando `/loot`.",
+        "O parâmetro `loot_previsto` foi renomeado para `nao_rolar_loot_com_vantagem` para maior clareza.",
+        "**Itens Pré-definidos (`*`):** Itens inseridos no `/loot` com um `*` no final (ex: `Poção de Cura*`) agora são dobrados (quantidade x2) para jogadores que ativarem o \"Double Gold\"."
+      ],
+      "fixes": [
+        "Corrigida a contagem de mesa extra do \"Double Gold\" (`/loot`), que estava a ser adicionada na semana *atual* em vez da semana *anterior*."
+      ],
+      "backend": [
+        "O parser de itens (`parseItemInput`) agora reconhece e remove o `*` do nome do item, guardando-o como um booleano (`isPredefined`).",
+        "`utils/playerLootUtils.js` foi atualizado para guardar o objeto de item completo (incluindo `isPredefined`) na seleção do jogador.",
+        "`utils/lootUtils.js` foi atualizado para mostrar o `*` nos logs (`formatPlayerList`) e no menu de seleção (`formatDropsList`)."
+      ]
+    },
+    {
       "version": "1.3.3",
       "date": "2025-10-31",
       "title": "Revisão do /relatorio & Melhorias de Inventário",

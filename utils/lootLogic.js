@@ -179,8 +179,8 @@ function calculateGold(playerLevels, tierString, lootPrevisto) {
     playerTiers.forEach(tier => { tierCounts[tier] = (tierCounts[tier] || 0) + 1; });
     const uniqueTiers = Object.keys(tierCounts);
 
-    const hasAdvantage = !lootPrevisto;
-    const advantageString = hasAdvantage ? " [Vantagem]" : " [Previsto]";
+    const hasAdvantage = lootPrevisto;
+    const advantageString = hasAdvantage ? " - Vantagem" : " - Normal";
 
     // Caso 1: 3+ Tiers ou Tier "aberto" (Média)
     if (uniqueTiers.length >= 3 || tierString.toLowerCase() === 'aberto') {
