@@ -1,6 +1,20 @@
 {
   "updates": [
     {
+      "version": "1.3.7",
+      "date": "2025-11-02",
+      "title": "/loot: Correção na Agregação de Itens Pré-definidos",
+      "features": [],
+      "fixes": [
+        "Corrigido um bug crítico no `/loot` onde itens normais e itens pré-definidos (`*`) com o mesmo nome (ex: 'Poção de Cura' e 'Poção de Cura*') eram incorretamente agrupados como um único item."
+      ],
+      "backend": [
+        "O sistema de parse e agregação de itens foi refatorado para usar uma chave composta (`nome|isPredefined`) em vez de apenas `item.name`.",
+        "Atualizadas as funções `parseItemInput`, `getAvailableDrops`, `formatPlayerList`, `finalizar_loot` e `updateHistoricoSheet` para usar a nova lógica de chave composta.",
+        "Atualizados os menus de seleção (simples e paginado) para incluir a flag `isPredefined` no `value` do item, permitindo a diferenciação."
+      ]
+    },
+    {
       "version": "1.3.5",
       "date": "2025-11-01",
       "title": "Melhorias no /loot: Gold Extra como Item",

@@ -21,7 +21,7 @@ const { docControle, docCraft, lookupIds, getPlayerTokenCount } = require('../ut
 // Importações de Lógica - Utilitários de Itens
 const { validateItems, parseItemInput } = require('../utils/itemUtils.js');
 // Importações de Lógica - Utilitários de Seleção/Devolução de Player
-const { processItemSelection, processItemReturn } = require('../utils/playerLootUtils.js');
+const { processItemSelection, processItemReturn, getAvailableDrops } = require('../utils/playerLootUtils.js');
 // Importações de Lógica - Utilitários Gerais E LÓGICA DE BOTÕES
 const {
   findEligibleTables,
@@ -55,7 +55,7 @@ module.exports = {
     .addBooleanOption(option => option.setName('nao_rolar_loot').setDescription('Opcional: Ignorar a rolagem de gold para esta mesa? (Default: False)').setRequired(false)),
 
   // 2. QUAIS INTERAÇÕES ESTE ARQUIVO GERENCIA
-  selects: ['loot_select_mesa', 'loot_item_select'],
+  selects: ['loot_select_mesa', 'loot_item_select', 'loot_item_select_paginated'],
   modals: [
     'modal_loot_mundanos',
     'modal_loot_itens',
@@ -80,7 +80,9 @@ module.exports = {
     'finalizar_loot',
     'devolver_loot',
     'encerrar_mesa',
-    'escrever_relatorio'
+    'escrever_relatorio',
+    'loot_page_prev',
+    'loot_page_next'
   ],
 
   // 3. EXECUÇÃO DO COMANDO PRINCIPAL (/loot)
@@ -170,7 +172,8 @@ module.exports = {
 
   // 4. GERENCIADOR DE SELECT MENUS
   async handleSelect(interaction) {
-    const [action, originalInteractionOrMessageId] = interaction.customId.split('|');
+    //const [action, originalInteractionOrMessageId] = interaction.customId.split('|');
+    const [action, originalInteractionOrMessageId, pageStr] = interaction.customId.split('|');
 
     // --- Seleção da Mesa ---
     if (action === 'loot_select_mesa') {
@@ -245,7 +248,7 @@ module.exports = {
           if (!lootMessage) { throw new Error("Mensagem pública de loot não encontrada para editar."); }
 
           const playersString = formatPlayerList(state.players, true, true); 
-          const dropsString = formatDropsList(state.allDrops); 
+          const dropsString = formatDropsList(getAvailableDrops(state));
           const newMessageContent = buildLootMessageContent(state, playersString, dropsString); 
 
           await lootMessage.edit({ content: newMessageContent, components: lootMessage.components });
@@ -255,6 +258,49 @@ module.exports = {
           interaction.followUp({ content: `Ocorreu um erro ao processar sua seleção: ${error.message}`, flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(e => {}); 
       }
     } // Fim else if loot_item_select
+
+    // --- Seleção de Itens (Modo Paginado > 25) ---
+    else if (action === 'loot_item_select_paginated') {
+      const lootMessageId = originalInteractionOrMessageId;
+      const page = parseInt(pageStr) || 0;
+      await interaction.deferUpdate();
+  
+      try {
+          const state = interaction.client.pendingLoots.get(lootMessageId);
+          if (!state) { console.warn(`[AVISO Loot Paginated] State não encontrado para ${lootMessageId}.`); return; }
+          const player = state.players.find(p => p.id === interaction.user.id);
+          if (!player) { console.warn(`[AVISO Loot Paginated] Usuário ${interaction.user.id} não encontrado em loot ${lootMessageId}.`); return; }
+  
+          // Importa os novos utilitários
+          const { processPaginatedSelection } = require('../utils/playerLootUtils.js');
+          const { buildPaginatedSelectMenu } = require('../utils/lootSelectMenuManager.js');
+  
+          // Chama a nova função de processamento (que atualiza state.allDrops e player.items)
+          processPaginatedSelection(state, player, interaction.values, page);
+  
+          // Atualiza a mensagem principal (para o log de fundo)
+          const lootMessage = await interaction.channel.messages.fetch(lootMessageId);
+          if (lootMessage) {
+              const playersString = formatPlayerList(state.players, true, true); 
+              const dropsString = formatDropsList(getAvailableDrops(state));
+              const newMessageContent = buildLootMessageContent(state, playersString, dropsString); 
+              await lootMessage.edit({ content: newMessageContent, components: lootMessage.components });
+          }
+  
+          // Re-renderiza o menu da página atual (para mostrar os itens selecionados e atualizar os botões)
+          // (interaction.message é a mensagem efêmera do "Pegar Loot")
+          // +++ ATUALIZADO: Busca tokens para passar para o construtor +++
+          const currentTokens = await getPlayerTokenCount(player.tag);
+          const canAffordDouble = currentTokens >= 4;
+          const { content, components } = buildPaginatedSelectMenu(state, player, lootMessageId, page, currentTokens, canAffordDouble);
+          await interaction.editReply({ content: content, components: components });
+  
+      } catch (error) {
+          console.error("Erro no handleSelect (loot_item_select_paginated):", error);
+          interaction.followUp({ content: `Ocorreu um erro ao processar sua seleção: ${error.message}`, flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(e => {});
+      }
+    } // Fim else if loot_item_select_paginated
+
   }, // Fim handleSelect
 
   // 5. GERENCIADOR DE MODAIS
@@ -438,6 +484,11 @@ module.exports = {
         }
     } else if (action === 'escrever_relatorio') {
         // Lógica específica abaixo
+    } else if (action === 'loot_page_prev' || action === 'loot_page_next') {
+        // Ação válida.
+        // Não precisamos definir o 'state' aqui, pois a lógica de paginação
+        // (que está dentro do bloco 'try' abaixo) já faz isso.
+        // Isto apenas impede que a execução caia no 'else' final.
     } else {
         console.warn("Ação de botão desconhecida:", action, interaction.customId);
         if (!interaction.replied && !interaction.deferred) await interaction.deferUpdate().catch(()=>{});
@@ -539,14 +590,14 @@ module.exports = {
             if (!lootMessage) throw new Error("Mensagem principal de loot não encontrada...");
             
             const playersString = formatPlayerList(state.players, true, true); 
-            const dropsString = formatDropsList(state.allDrops); 
+            const dropsString = formatDropsList(getAvailableDrops(state)); 
             const newMessageContent = buildLootMessageContent(state, playersString, dropsString);
             await lootMessage.edit({ content: newMessageContent }); 
 
             // Atualiza a MENSAGEM ONDE O BOTÃO FOI CLICADO
             const newDoubleLabel = player.doubleActive
-                ? `Desativar Dobro (Custo: 1 "Double Up")` 
-                : `Ativar Dobro (Custo: 1 "Double Up")`;
+                ? `Desativar Dobro (4 de ${currentTokens} 🎟️)` 
+                : `Ativar Dobro (4 de ${currentTokens} 🎟️)`;
             const newDoubleStyle = player.doubleActive ? ButtonStyle.Danger : ButtonStyle.Primary; 
             const updatedDoubleButton = new ButtonBuilder()
                 .setCustomId(interaction.customId) 
@@ -577,7 +628,7 @@ module.exports = {
                 if (index === buttonRowIndex) {
                     return updatedButtonRow; 
                 }
-                return ActionRowBuilder.from(row); 
+                return row;
             });
 
             await interaction.editReply({
@@ -608,7 +659,27 @@ module.exports = {
           let pickedText = "Nenhum item pego."; 
           let finalGold = state.goldFinalPerPlayer; 
           
-          let finalItems = player.items || [];
+          // +++ CORREÇÃO BUG 2: Agrega os itens do carrinho (simples ou paginado) +++
+          const aggregatedItems = new Map();
+          (player.items || []).forEach(item => {
+              if (!item || !item.name) return;
+
+              const key = `${item.name}|${item.isPredefined ? 'true' : 'false'}`;
+              const existing = aggregatedItems.get(key);
+              
+              // Se tem unitIndex (paginado) ou se é do modo simples (agora amount: 1), contamos como 1.
+              // Se não tem unitIndex (modo simples antigo), usamos item.amount.
+              const amountToAdd = (item.unitIndex !== undefined) ? 1 : (item.amount || 0);
+
+              if (existing) {
+                  existing.amount += amountToAdd;
+              } else {
+                  // Armazena uma cópia
+                  aggregatedItems.set(key, { ...item, amount: amountToAdd });
+              }
+          });
+          
+          let finalItems = Array.from(aggregatedItems.values()); // Usa a lista agregada
           if (player.doubleActive) {
               finalGold *= 2; 
               finalItems = finalItems.map(item => {
@@ -621,7 +692,7 @@ module.exports = {
           }
 
           if (finalItems.length > 0) { 
-              pickedText = "Itens pegos:\n" + finalItems.map(i => {
+              pickedText = "Itens pegos:\n" + finalItems.filter(i => i.amount > 0).map(i => { // Filtra os que têm 0
                   // Não mostra "PO" para os itens de gold aqui, o gold total já inclui
                   if (i.name.endsWith(' PO')) return null; 
                   return `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`;
@@ -675,7 +746,7 @@ module.exports = {
             if (!lootMessage) throw new Error("Mensagem pública de loot não encontrada ao devolver.");
             
             const playersString = formatPlayerList(state.players, true, true); 
-            const dropsString = formatDropsList(state.allDrops);
+            const dropsString = formatDropsList(getAvailableDrops(state));
             const newMessageContent = buildLootMessageContent(state, playersString, dropsString);
             await lootMessage.edit({ content: newMessageContent }); 
 
@@ -712,6 +783,38 @@ module.exports = {
                     .setRequired(true)
             ));
             await interaction.showModal(modal); 
+        }
+
+        // +++ NOVO: Botões de Paginação +++
+        else if (action === 'loot_page_prev' || action === 'loot_page_next') {
+            const [_, lootMessageId, pageStr] = interaction.customId.split('|');
+            const page = parseInt(pageStr) || 0;
+            const state = interaction.client.pendingLoots.get(lootMessageId);
+            
+            // Verifica state e permissão (SÓ o jogador que abriu o menu pode paginar)
+            if (!state || !state.players.find(p => p.id === interaction.user.id)) {
+                await interaction.reply({ content: "Você não pode navegar neste menu.", flags: [MessageFlagsBitField.Flags.Ephemeral] });
+                return;
+            }
+            
+            const player = state.players.find(p => p.id === interaction.user.id);
+            // Garante que o jogador está a interagir com o menu de loot ativo mais recente dele
+            if (player.activeMessageId !== interaction.message.id) {
+                  await interaction.reply({ content: "Você tem um menu mais recente ativo em outro lugar.", flags: [MessageFlagsBitField.Flags.Ephemeral] });
+                  return;
+            }
+  
+            await interaction.deferUpdate();
+  
+            const newPage = action === 'loot_page_next' ? page + 1 : page - 1;
+            
+            // (O require está aqui dentro para evitar dependência circular no topo do ficheiro)
+            const { buildPaginatedSelectMenu } = require('../utils/lootSelectMenuManager.js');
+            const currentTokens = await getPlayerTokenCount(player.tag);
+            const canAffordDouble = currentTokens >= 4;
+            const { content, components } = buildPaginatedSelectMenu(state, player, lootMessageId, newPage, currentTokens, canAffordDouble);
+            
+            await interaction.editReply({ content: content, components: components });
         }
 
     } catch (error) { // Catch geral para a lógica dos botões

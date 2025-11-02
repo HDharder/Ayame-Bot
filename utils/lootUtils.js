@@ -21,6 +21,7 @@ const {
 
 const { batchUpdateInventories } = require('./inventoryManager.js');
 const { getPlayerLevels, calculateGold } = require('./lootLogic.js');
+const { buildPaginatedSelectMenu } = require('./lootSelectMenuManager.js');
 
 // ID do canal de log
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
@@ -65,12 +66,35 @@ function formatPlayerList(players, includeItems = false, includeLevel = false) {
         playerLine += " (Dobro Ativado)";
     }
     if (includeItems && p.items && Array.isArray(p.items) && p.items.length > 0) {
-      const itemText = p.items
-         .filter(item => item && item.name && typeof item.amount === 'number' && item.amount > 0)
-         .map(i => `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`) // <<< MOSTRA O *
-         .join(', ');
+      // +++ INÍCIO DA CORREÇÃO (AGREGAÇÃO DE ITENS) +++
+      // p.items pode conter unidades (do modo paginado) ou pilhas (do modo simples)
+      const aggregatedItems = new Map();
+      p.items.forEach(item => {
+          if (!item || !item.name) return;
+
+          const key = `${item.name}|${item.isPredefined ? 'true' : 'false'}`;
+          const existing = aggregatedItems.get(key);
+          
+          // Se tem unitIndex, é do modo paginado, contamos como 1.
+          // Se não tem, é do modo simples, usamos o item.amount.
+          const amountToAdd = (item.unitIndex !== undefined) ? 1 : (item.amount || 0);
+
+          if (existing) {
+              existing.amount += amountToAdd;
+          } else {
+              // Armazena uma cópia para não bagunçar o objeto original
+              aggregatedItems.set(key, { ...item, amount: amountToAdd });
+          }
+      });
+
+      const itemText = Array.from(aggregatedItems.values())
+          .filter(item => item.amount > 0)
+          .map(i => `${i.amount}x ${i.name}${i.isPredefined ? '*' : ''}`)
+          .join(', ');
+      // +++ FIM DA CORREÇÃO +++
+
       if (itemText) {
-          playerLine += " - " + itemText;
+           playerLine += " - " + itemText;
       }
     }
     return playerLine;
@@ -274,6 +298,21 @@ async function handlePegarLootClick(interaction, state, lootMessageId) {
         return;
     }
 
+    // +++ NOVO: Decide qual menu usar +++
+    // Calcula o TOTAL de unidades de itens
+    const totalItemUnits = state.allDrops.reduce((sum, item) => sum + item.amount, 0);
+  
+    // Limpa o carrinho do jogador (player.items) antes de abrir um novo menu
+    // (A lógica de devolução antiga é mantida se o jogador fechar o menu)
+    if (player.items && player.items.length > 0) {
+        const { processItemReturn } = require('../utils/playerLootUtils.js');
+        processItemReturn(state, player); // Devolve tudo ao 'state.allDrops'
+    }
+  
+    // --- CASO 1: MODO SIMPLES (<= 25 unidades) ---
+    if (totalItemUnits <= 25) {
+        console.log(`[Loot Menu] Usando Modo Simples (${totalItemUnits} unidades)`);
+
     // Se HÁ drops
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId(`loot_item_select|${lootMessageId}`) 
@@ -290,7 +329,7 @@ async function handlePegarLootClick(interaction, state, lootMessageId) {
            if (optionsAdded >= 25) break; 
            // <<< CORRIGIDO: Mostra o * no label >>>
            selectMenu.addOptions( new StringSelectMenuOptionBuilder()
-                .setValue(`${item.name}-${i}`) // Valor é o nome completo (sem *)
+                .setValue(`${item.name}|${item.isPredefined ? 'true' : 'false'}-${i}`) // Valor é o nome completo (sem *)
                 .setLabel(`${item.name}${item.isPredefined ? '*' : ''}`) // Label mostra o *
                 .setDescription(`(1 de ${currentAmount})`) 
            );
@@ -319,6 +358,24 @@ async function handlePegarLootClick(interaction, state, lootMessageId) {
         components: [new ActionRowBuilder().addComponents(selectMenu), new ActionRowBuilder().addComponents(doubleButton, finalizeButton)],
         allowedMentions: { users: [player.id] } 
     });
+    const replyMessage = await interaction.fetchReply();
+    player.activeMessageId = replyMessage.id;
+    return; // <<< FIM DO MODO SIMPLES
+    }
+  
+    // --- CASO 2: MODO PAGINADO (> 25 unidades) ---
+    console.log(`[Loot Menu] Usando Modo Paginado (${totalItemUnits} unidades)`);
+    player.currentPage = 0; // Inicia na página 0
+    
+    // Chama o novo gestor de menu paginado
+    const { content, components } = buildPaginatedSelectMenu(state, player, lootMessageId, 0, currentTokens, canAffordDouble);
+    
+    await interaction.reply({
+        content: content,
+        components: components,
+        allowedMentions: { users: [player.id] } 
+    });
+    
     const replyMessage = await interaction.fetchReply();
     player.activeMessageId = replyMessage.id;
 }
@@ -582,7 +639,25 @@ async function updateHistoricoSheet(state, docControle) {
       const cellItem = sheetHistorico.getCell(rowIndex_0_based, 13 + i); 
       let itemString = '';
       if (player && player.items && Array.isArray(player.items) && player.items.length > 0) {
-        itemString = player.items
+        // +++ CORREÇÃO: Agrega os itens antes de salvar na planilha +++
+        const aggregatedItems = new Map();
+        player.items.forEach(item => {
+            if (!item || !item.name) return;
+            const key = `${item.name}|${item.isPredefined ? 'true' : 'false'}`;
+            const existing = aggregatedItems.get(key);
+            
+            // Se tem unitIndex (paginado) ou se é do modo simples (amount: 1), contamos como 1.
+            // Se não tem unitIndex (modo simples antigo), usamos item.amount.
+            const amountToAdd = (item.unitIndex !== undefined) ? 1 : (item.amount || 0);
+
+            if (existing) {
+                existing.amount += amountToAdd;
+            } else {
+                aggregatedItems.set(key, { ...item, amount: amountToAdd });
+            }
+        });
+
+        itemString = Array.from(aggregatedItems.values()) // <<< Usa a lista agregada
           .filter(item => item && item.name && typeof item.amount === 'number' && item.amount > 0)
           .map(it => `${it.amount}x ${it.name}${it.isPredefined ? '*' : ''}`) // <<< MOSTRA O *
           .join(', ');
@@ -672,7 +747,7 @@ async function sendTokenReportMessage(state, playersWhoSpent, client) {
       `Gasto de Tokens (Dobro de Loot):\n`,
       `**Mestre:** ${mestreMention}`,
       `**Mesa:** ${dataMesa} às ${horarioMesa}${nomeMesaFormatado}\n`,
-      `**Jogadores (Custo: 1 "Double Up"):**`, // <<< MENSAGEM CORRIGIDA
+      `**Jogadores (4 🎟️ Cada):**`, // <<< MENSAGEM CORRIGIDA
       `${playersListString}`
     ].join('\n');
     const playerIdsToMention = playersWhoSpent
