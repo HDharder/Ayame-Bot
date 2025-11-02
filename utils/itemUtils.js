@@ -115,12 +115,12 @@ function parseItemInput(text, isMisc = false) {
     // Nome de validação: remove colchetes e espaços extras
     const validationName = name.split('[')[0].trim(); 
 
-    // Agrupa pelo NOME COMPLETO em minúsculas
-    const lowerName = name.toLowerCase(); 
-    const currentEntry = consolidated.get(lowerName);
+    const key = `${name.toLowerCase()}|${isPredefined ? 'true' : 'false'}`;
+
+    const currentEntry = consolidated.get(key);
     const currentAmount = currentEntry ? currentEntry.amount : 0; 
 
-    consolidated.set(lowerName, { 
+    consolidated.set(key, {
         name: name, // Nome completo (sem *)
         validationName: validationName, // Nome limpo (sem [] e sem *)
         amount: currentAmount + amount,
