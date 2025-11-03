@@ -10,7 +10,7 @@ const { checkChannelPermission } = require('../utils/channelGuard.js'); //
 const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet } = require('../utils/google.js'); //
 
 // Pega o ID do canal de log (o mesmo usado pelo /loot e /relatorio)
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
+//const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -161,9 +161,9 @@ module.exports = {
             }
 
             // 7. ENVIO DO LOG (Apenas do que foi removido)
-            if (LOG_CHANNEL_ID) {
+            //if (LOG_CHANNEL_ID) {
                 try {
-                    const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
+                    const logChannel = interaction.channel; // Pega o canal atual (o canal do inventário)
                     
                     const itemsLogString = validItemsToRemove.length > 0
                         ? validItemsToRemove.map(item => `${item.amount}x ${item.name}`).join(', ')
@@ -216,7 +216,7 @@ module.exports = {
                 } catch (logError) {
                     console.error("[ERRO /gasto] Falha ao enviar log OU salvar ID do log:", logError);
                 }
-            }
+            //}
 
             // 8. RESPOSTA FINAL
             let finalMessage = 'Gasto registrado com sucesso! Seu inventário no canal foi atualizado.';

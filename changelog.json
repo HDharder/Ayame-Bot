@@ -1,6 +1,16 @@
 {
   "updates": [
     {
+      "version": "1.4.1",
+      "date": "2025-11-03",
+      "title": "Correção do /gasto: Logs no Canal Correto",
+      "features": [],
+      "fixes": [
+        "Corrigido o comando `/gasto` que enviava a mensagem de log para o canal de log global em vez do canal de inventário do jogador."
+      ],
+      "backend": []
+    },
+    {
       "version": "1.4.0",
       "date": "2025-11-03",
       "title": "Novos Comandos de Inventário: /gasto e /exibir",
