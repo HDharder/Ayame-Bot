@@ -8,7 +8,7 @@ const { checkChannelPermission } = require('../utils/channelGuard.js'); //
 const { fetchMesasJogadas } = require('../utils/exibirUtils.js'); //
 
 // Pega o ID do canal de log (o mesmo usado pelo /loot e /relatorio)
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
+//const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -97,6 +97,7 @@ module.exports = {
 
         const logIds = String(result[0]['Gastos']).split(',');
 
+        /*
         // 2. Buscar Canal de Log
         if (!LOG_CHANNEL_ID) {
             await interaction.editReply({ content: "Erro: O ID do canal de log não está configurado no bot." });
@@ -107,7 +108,12 @@ module.exports = {
         if (!logChannel || !logChannel.isTextBased()) {
             await interaction.editReply({ content: "Erro: Não foi possível encontrar o canal de logs." });
             return;
-        }
+        }*/
+
+        // O canal de log é o próprio canal do inventário
+        const logChannel = interaction.channel;
+        // (Já sabemos que é 'TextBased' e que o bot tem permissão
+        // por causa das verificações no início do comando)
 
         // 3. Buscar e compilar mensagens de log
         let allGastosLines = [];

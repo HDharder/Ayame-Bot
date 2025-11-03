@@ -1,6 +1,17 @@
 {
   "updates": [
     {
+      "version": "1.4.2",
+      "date": "2025-11-03",
+      "title": "Hotfix /exibir: Leitura de Logs em Fóruns",
+      "features": [],
+      "fixes": [
+        "Corrigido o comando `/exibir opcao: Histórico de Gastos` que não encontrava as mensagens de log quando usado em um canal de fórum (Inventário).",
+        "O comando agora procura os logs no canal atual (`interaction.channel`), em vez de procurar no canal de log global (`LOG_CHANNEL_ID`)."
+      ],
+      "backend": []
+    },
+    {
       "version": "1.4.1",
       "date": "2025-11-03",
       "title": "Correção do /gasto: Logs no Canal Correto",
