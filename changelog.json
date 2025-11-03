@@ -1,6 +1,25 @@
 {
   "updates": [
     {
+      "version": "1.4.0",
+      "date": "2025-11-03",
+      "title": "Novos Comandos de Inventário: /gasto e /exibir",
+      "features": [
+        "**Novo Comando `/gasto`:** Permite que jogadores registem gastos de Ouro ou Itens.",
+        "O `/gasto` só pode ser usado no canal de inventário registado do jogador.",
+        "O comando envia um log detalhado para o canal de inventário e salva o ID da mensagem de log na coluna 'Gastos' da planilha do jogador.",
+        "**Novo Comando `/exibir`:** Permite que jogadores consultem históricos relacionados ao seu personagem.",
+        "**`/exibir opcao: Histórico de Gastos`:** Busca todos os IDs de log da coluna 'Gastos', formata-os num Embed paginado e exibe ao jogador, incluindo data, hora, ouro, itens e motivo.",
+        "**`/exibir opcao: Histórico de Mesas Jogadas`:** Busca no 'Controle de Mesas' todas as mesas finalizadas ('Sim') que o personagem jogou.",
+        "O histórico de mesas exibe o Mestre, Tier, e o loot final (processando corretamente o 'Dobro Ativado' e itens de 'Gold Extra')."
+      ],
+      "fixes": [],
+      "backend": [
+        "**Nova Função `batchRemoveInventories`:** Criada em `inventoryManager.js` para remover Ouro e Itens em lote, atualizando a planilha e os embeds do Discord.",
+        "**Novo Utilitário `exibirUtils.js`:** Criado para modularizar a lógica de busca e processamento do histórico de mesas jogadas."
+      ]
+    },
+    {
       "version": "1.3.7",
       "date": "2025-11-02",
       "title": "/loot: Correção na Agregação de Itens Pré-definidos",

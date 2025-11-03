@@ -23,6 +23,18 @@
     "permissions": "Qualquer jogador (em canais permitidos)",
     "usage": "1. Use `/inventario` num canal de fórum (post) na categoria de inventários.\n2. Se você tiver múltiplos personagens, selecione qual deles será 'dono' deste canal.\n3. O bot exibirá seu inventário e salvará este canal. O loot de mesas encerradas (`/loot` ou `/relatorio`) atualizará esta mensagem automaticamente.\n**Importante:** Um canal só pode ser registrado por um único jogador."
   },
+  "gasto": {
+    "name": "/gasto",
+    "description": "Registra um gasto (ouro ou itens) do seu personagem.",
+    "permissions": "Qualquer jogador (no seu canal de inventário)",
+    "usage": "Este comando **só funciona no canal de inventário** que você registrou com `/inventario`.\n1. Use `/gasto`.\n2. Preencha a `observacao` (obrigatório) com o motivo (ex: 'Compra de Poções').\n3. Preencha `ouro` (ex: `150`) ou `itens` (ex: `1x Poção, 2x Adaga`) ou ambos.\n4. O bot removerá os valores do seu inventário e atualizará a mensagem do inventário automaticamente."
+  },
+  "exibir": {
+    "name": "/exibir",
+    "description": "Exibe informações do seu personagem, como histórico de gastos.",
+    "permissions": "Qualquer jogador (no seu canal de inventário)",
+    "usage": "Use no canal do seu inventário.\n1. `/exibir opcao: Histórico de Gastos` - Mostra um histórico de todos os seus gastos registrados.\n2. `/exibir opcao: Histórico de Mesas Jogadas` - Mostra todas as mesas que você jogou e o loot recebido."
+  },
   "relatorio": {
     "name": "/relatorio",
     "description": "Alternativa manual ao /loot. Registra loot e atualiza o inventário.",
