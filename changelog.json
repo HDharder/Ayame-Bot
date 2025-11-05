@@ -1,6 +1,52 @@
 {
   "updates": [
     {
+      "version": "2.0.0",
+      "date": "2025-11-05",
+      "title": "A Ascensão da Economia: Comandos /transacao, /gasto, /exibir e /staff",
+      "features": [
+        "**Sistema de Lojas e Transações (`/transacao`)**",
+        "Agora você pode comprar e vender itens em canais de mercado designados!",
+        "O bot lê as regras da planilha 'Player ID' para saber se um mercado é de 'Compra', 'Venda', 'Compra e Venda' ou 'Serviços'.",
+        "Suporte a lojas com `[Estoque]` limitado (que é debitado na compra) e `[Caravana]` (que agenda a entrega para a data da próxima segunda).",
+        "Lojas com `*` (ex: `Loja*`) só podem ser acedidas por personagens que estão atualmente numa mesa ativa (`Controle de mesas`).",
+        "Lojas com `(Nome da Loja)` (ex: `Guilda (O Pavilhão)`) filtram a aba principal pela coluna 'Loja'.",
+        "Novo sistema de Filtro 🔎: Permite filtrar lojas/inventários. Use `(A, B)` para `E` (AND), e `,` para `OU` (OR). Ex: `(poção, cura), adaga`.",
+        "\n",
+        
+        "**Gestão de Inventário (`/gasto` e `/exibir`)**",
+        "Novo comando `/gasto`: Permite remover Ouro ou Itens do seu inventário com uma justificação (Observação).",
+        "O `/gasto` agora valida se você tem os itens/ouro antes de os remover.",
+        "O log do `/gasto` é guardado no próprio canal do inventário e o ID da mensagem é salvo na sua planilha.",
+        "Novo comando `/exibir`: Permite ver históricos do seu personagem no canal do inventário.",
+        "`/exibir gastos`: Mostra um histórico paginado de todos os seus gastos registados com o `/gasto`.",
+        "`/exibir mesas_jogadas`: Mostra todo o loot (incluindo Gold Extra e Dobro) que você recebeu de mesas finalizadas.",
+        "\n",
+        
+        "**Painel de Staff (`/staff`)**",
+        "Novo comando `/staff` exclusivo para Staffs.",
+        "Exibe estatísticas do servidor (Jogadores, Personagens, Nv. Máximo, Mesas da Semana).",
+        "Verifica a 'Caravana Bastião' e ativa um botão se a entrega estiver pronta (comparando H1, K1 e N1).",
+        "O botão 'Distribuir Caravana' entrega os itens a todos os jogadores na lista e limpa a aba.",
+        "\n",
+
+        "**Estabilidade do Bot (Gestão de RAM)**",
+        "O bot agora monitoriza o uso de RAM. Se a RAM usada (RSS) ultrapassar o limite definido no `.env` (RAM_LIMIT_MB), o bot força uma limpeza de estados antigos antes de executar um novo comando.",
+        "Adicionado um 'Recolhedor de Lixo' que corre a cada hora para limpar estados de comandos abandonados (ex: `/loot` ou `/transacao` abertos há mais de 1 horas)."
+      ],
+      "fixes": [
+        "Corrigido o `/gasto` e o `/exibir` para funcionar corretamente em canais de Fórum (Inventários), lendo e escrevendo no canal correto.",
+        "Corrigido o `Unknown Interaction` (erro de 3 segundos) nos botões de Compra/Venda ao adicionar `interaction.update()` para feedback imediato.",
+        "Corrigido o `Unknown Message` no `processCompra` ao guardar o ID da mensagem da loja (`shopMessageId`) no estado.",
+        "Corrigidos vários erros `Invalid Form Body` nos menus de filtro, garantindo que `setMaxValues` nunca seja maior que as opções disponíveis."
+      ],
+      "backend": [
+        "Adicionada a função `batchRemoveInventories` ao `inventoryManager.js` para remoção de itens/ouro.",
+        "Criados os novos utilitários: `utils/staffUtils.js`, `utils/transacaoUtils.js`, `utils/filterManager.js` e `utils/modalUtils.js`.",
+        "A lógica de cálculo da data da Caravana foi corrigida para forçar o ano para '20xx' (ex: '25' -> '2025')."
+      ]
+    },
+    {
       "version": "1.4.2",
       "date": "2025-11-03",
       "title": "Hotfix /exibir: Leitura de Logs em Fóruns",

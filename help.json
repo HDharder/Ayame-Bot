@@ -33,7 +33,19 @@
     "name": "/exibir",
     "description": "Exibe informações do seu personagem, como histórico de gastos.",
     "permissions": "Qualquer jogador (no seu canal de inventário)",
-    "usage": "Use no canal do seu inventário.\n1. `/exibir opcao: Histórico de Gastos` - Mostra um histórico de todos os seus gastos registrados.\n2. `/exibir opcao: Histórico de Mesas Jogadas` - Mostra todas as mesas que você jogou e o loot recebido."
+    "usage": "Use no canal do seu inventário.\n1. `/exibir opcao: Histórico de Gastos (Canal)` - Mostra os gastos do `/gasto`.\n2. `/exibir opcao: Histórico de Mesas Jogadas` - Mostra o loot recebido das mesas.\n3. `/exibir opcao: Histórico de Transações (Lojas)` - Mostra seu histórico de Compras/Vendas."
+  },
+  "staff": {
+    "name": "/staff",
+    "description": "Exibe o painel de controlo de staff com estatísticas e gestão.",
+    "permissions": "Staff",
+    "usage": "1. Use `/staff` para ver as estatísticas do servidor (Jogadores, Níveis, Mesas da Semana).\n2. O painel também mostra o estado da 'Caravana Bastião'.\n3. Se a caravana estiver pronta ('READY'), um botão aparecerá para distribuir os itens. Clicar nesse botão executará o `batchUpdateInventories` para todos os jogadores e limpará a aba da caravana."
+  },
+  "transacao": {
+    "name": "/transacao",
+    "description": "Inicia uma transação de compra, venda ou serviço em um canal de mercado.",
+    "permissions": "Qualquer jogador (em canais de mercado)",
+    "usage": "Use dentro de um canal ou post de fórum de mercado.\n1. O bot identifica o tipo de mercado (Compra, Venda, etc.).\n2. Selecione seu personagem.\n3. **Compra:** Selecione os itens (máx 5) e clique em 'Definir Quantidades' para abrir um modal.\n4. **Venda:** (Não implementado).\n5. A transação é validada, seu inventário é atualizado e um log é criado."
   },
   "relatorio": {
     "name": "/relatorio",

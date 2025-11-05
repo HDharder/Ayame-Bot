@@ -32,6 +32,7 @@ client.pendingLoots = new Map();
 client.pendingRelatorios = new Map();
 // Armazena estados pendentes do /inventario
 client.pendingInventarios = new Map();
+client.reactionListeners = new Map();
 const commandsToRegister = [];
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -54,14 +55,71 @@ for (const file of commandFiles) {
   }
 }
 
+// +++ INÍCIO: SISTEMA DE GESTÃO DE MEMÓRIA +++
+
+const mapsToClean = new Map(); // Mapa para guardar os mapas a limpar
+const STALE_LIMIT_HOURS = 1; // Limite de 6 horas para estados antigos
+
+/**
+ * Limpa mapas de estado pendentes (pendingLoots, etc.) para libertar RAM
+ * de interações que foram abandonadas pelos utilizadores.
+ * @param {boolean} [forceAll=false] - Se true, limpa todos os estados, independentemente da idade.
+ */
+async function forceCleanup(forceAll = false) {
+    console.log(`[INFO GarbageCollector] A executar limpeza. Forçar tudo: ${forceAll}`);
+    const now = Date.now();
+    const limitMs = STALE_LIMIT_HOURS * 3600 * 1000;
+    let itemsCleaned = 0;
+
+    for (const [mapName, map] of mapsToClean.entries()) {
+        if (!map) continue;
+        
+        // Itera pelas chaves (IDs) do mapa
+        for (const interactionId of map.keys()) {
+            // Tenta extrair o timestamp do ID do Discord
+            const timestamp = (BigInt(interactionId) >> 22n) + 1420070400000n;
+            const ageMs = now - Number(timestamp);
+
+            // Se 'forceAll' estiver ativo, OU se o estado for mais antigo que o limite
+            if (forceAll || ageMs > limitMs) {
+                map.delete(interactionId);
+                itemsCleaned++;
+            }
+        }
+    }
+    console.log(`[INFO GarbageCollector] Limpeza concluída. ${itemsCleaned} estados removidos.`);
+}
+
+/**
+ * Inicia o temporizador de limpeza de rotina (a cada hora).
+ */
+function startRoutineGarbageCollector() {
+    const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 Hora
+
+    setInterval(() => {
+        console.log(`[INFO GarbageCollector] A executar limpeza de rotina...`);
+        forceCleanup(false); // Chama a limpeza (sem forçar)
+    }, CHECK_INTERVAL_MS);
+}
+// +++ FIM: SISTEMA DE GESTÃO DE MEMÓRIA +++
+
 // --- 4. Registro dos Comandos (REST) ---
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
 client.once(Events.ClientReady, async (bot) => {
   console.log(`Bot ${bot.user.tag} está online!`);
 
+  // +++ ADICIONA OS MAPAS AO GESTOR DE LIMPEZA +++
+  mapsToClean.set('pendingRegistrations', client.pendingRegistrations); //
+  mapsToClean.set('pendingLoots', client.pendingLoots); //
+  mapsToClean.set('pendingRelatorios', client.pendingRelatorios); //
+  mapsToClean.set('pendingInventarios', client.pendingInventarios); //
+
   // CARREGA AS REGRAS DE CANAL PARA O CACHE
   await loadChannelRules();
+
+  // +++ INICIA O RECOLHEDOR DE LIXO +++
+  startRoutineGarbageCollector(); // Inicia o timer
 
   try {
     console.log(`Registrando ${commandsToRegister.length} comandos (/) ...`);
@@ -77,6 +135,20 @@ client.once(Events.ClientReady, async (bot) => {
 
 // --- 5. O ROTEADOR DE INTERAÇÕES ---
 client.on(Events.InteractionCreate, async interaction => {
+
+  // +++ INÍCIO: "DISJUNTOR" DE RAM (O que você pediu) +++
+  const ramLimitMB = parseInt(process.env.RAM_LIMIT_MB) || 100; // Padrão de 500MB
+  const ramLimitBytes = ramLimitMB * 1024 * 1024;
+  const currentRSS = process.memoryUsage().rss; // RAM atual usada pelo Node
+
+  if (currentRSS > ramLimitBytes) {
+      console.warn(`[ALERTA DE RAM] Limite (${ramLimitMB}MB) excedido! RAM atual: ${(currentRSS / 1024 / 1024).toFixed(2)}MB.`);
+      console.warn(`[ALERTA DE RAM] A forçar limpeza de estados antigos ANTES de executar o comando...`);
+      
+      await forceCleanup(false); // Tenta limpar estados com >6 horas primeiro
+      console.log(`[ALERTA DE RAM] Limpeza concluída. A continuar com o comando...`);
+  }
+  // +++ FIM: "DISJUNTOR" DE RAM +++
 
   try {
     let command; // Variável para guardar o comando encontrado
@@ -204,5 +276,75 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-// --- 6. Login ---
+// --- 6. NOVO: OUVINTE DE REAÇÕES ---
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    // 1. Ignorar reações de bots
+    if (user.bot) return;
+
+    // 2. Tentar carregar dados "parciais" (mensagens ou reações antigas)
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('Falha ao carregar reação parcial:', error);
+            return;
+        }
+    }
+    if (reaction.message.partial) {
+        try {
+            await reaction.message.fetch();
+        } catch (error) {
+            console.error('Falha ao carregar mensagem parcial:', error);
+            return;
+        }
+    }
+
+    // 3. Verificar se estamos "ouvindo" esta mensagem
+    const listener = client.reactionListeners.get(reaction.message.id);
+    if (!listener) return; // Ninguém está ouvindo esta mensagem
+
+    // 4. Verificar se é o emoji correto
+    // Compara o ID (para emojis customizados) ou o nome (para emojis unicode, ex: '✅')
+    const emojiIdentifier = reaction.emoji.id ? reaction.emoji.id : reaction.emoji.name;
+    if (emojiIdentifier !== listener.emojiIdentifier) return; 
+
+    // 5. Verificar Permissões (Usuário ou Cargo)
+    let hasPermission = false;
+    
+    // 5a. Verificar lista de usuários permitidos
+    if (listener.allowedUsers && listener.allowedUsers.includes(user.id)) {
+        hasPermission = true;
+    }
+
+    // 5b. Verificar lista de cargos permitidos (se o usuário ainda não tiver permissão)
+    if (!hasPermission && listener.allowedRoles && listener.allowedRoles.length > 0) {
+        try {
+            // Precisamos do 'member' (membro do servidor) para verificar os cargos
+            const member = await reaction.message.guild.members.fetch(user.id);
+            if (member && member.roles.cache.some(role => listener.allowedRoles.includes(role.id))) {
+                hasPermission = true;
+            }
+        } catch (fetchError) {
+            console.error("[Reação] Erro ao buscar 'member' para checar cargos:", fetchError);
+        }
+    }
+
+    // 6. Se não tiver permissão, para
+    if (!hasPermission) return;
+
+    // 7. SUCESSO! Acionar o comando correspondente
+    try {
+        const command = client.commands.get(listener.commandName);
+        if (command && command.handleReaction) {
+            // Passa a reação, o usuário que reagiu, e os dados extras do ouvinte
+            await command.handleReaction(reaction, user, listener);
+        } else {
+            console.warn(`[Reação] Comando '${listener.commandName}' não encontrado ou não tem 'handleReaction'.`);
+        }
+    } catch (error) {
+        console.error(`[Reação] Erro ao executar handleReaction para '${listener.commandName}':`, error);
+    }
+});
+
+// --- 7. Login ---
 client.login(DISCORD_TOKEN);

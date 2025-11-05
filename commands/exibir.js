@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlagsBitField, userMention } =
 
 // Importa as funções de utilitários que vamos usar
 const { getChannelOwner } = require('../utils/inventarioUtils.js'); //
-const { docInventario, getValuesFromSheet } = require('../utils/google.js'); //
+const { docInventario, docComprasVendas, getValuesFromSheet } = require('../utils/google.js'); //
 const { checkChannelPermission } = require('../utils/channelGuard.js'); //
 const { fetchMesasJogadas } = require('../utils/exibirUtils.js'); //
 
@@ -20,7 +20,8 @@ module.exports = {
                 .setRequired(true)
                 .addChoices(
                     { name: 'Gastos', value: 'gastos' },
-                    { name: 'Histórico de Mesas Jogadas', value: 'mesas_jogadas' }
+                    { name: 'Histórico de Mesas Jogadas', value: 'mesas_jogadas' },
+                    { name: 'Histórico de Transações', value: 'transacoes' }
                     // { name: 'Opção Futura', value: 'outra_coisa' }
                 )
         ),
@@ -62,6 +63,8 @@ module.exports = {
 
             if (opcao === 'gastos') {
                 await this.handleExibirGastos(interaction, channelInfo.characterRow);
+            } else if (opcao === 'transacoes') {
+                await this.handleExibirTransacoes(interaction, channelInfo.characterRow);
             } else if (opcao === 'mesas_jogadas') {
                 await this.handleExibirMesas(interaction, channelInfo.characterRow);
             }
@@ -183,6 +186,77 @@ module.exports = {
                 content: `*Aviso: ${notFoundCount} registro(s) de gastos foram ignorados pois as mensagens de log originais foram apagadas.*`, 
                 ephemeral: true 
             });
+        }
+
+        },
+
+    /**
+     * Lógica específica para a opção 'transacoes'
+     * @param {import('discord.js').Interaction} interaction
+     * @param {import('google-spreadsheet').GoogleSpreadsheetRow} characterRow
+     */
+    async handleExibirTransacoes(interaction, characterRow) {
+        const charName = characterRow.get('PERSONAGEM');
+        const userName = characterRow.get('JOGADOR');
+
+        // 1. Buscar dados da planilha "Registro"
+        await docComprasVendas.loadInfo(); //
+        const sheet = docComprasVendas.sheetsByTitle['Registro']; //
+        if (!sheet) throw new Error("Aba 'Registro' não encontrada na planilha de Compras.");
+
+        await sheet.loadHeaderRow(1);
+        const allRows = await sheet.getRows();
+
+        const history = [];
+        for (const row of allRows) {
+            // Filtra pelo jogador E personagem
+            if (row.get('Jogador')?.toLowerCase() === userName.toLowerCase() &&
+                row.get('Personagem')?.toLowerCase() === charName.toLowerCase())
+            {
+                history.push(row); // Adiciona a linha inteira
+            }
+        }
+
+        if (history.length === 0) {
+            await interaction.editReply({ content: `Nenhum histórico de transações (compras/vendas) encontrado para **${charName}**.` });
+            return;
+        }
+
+        // 2. Formata as linhas
+        const allLines = history.map(row => {
+            // Colunas: "Data;Local;Tipo;Total;Transação"
+            const data = row.get('Data') || '??/??/?? ??:??';
+            const tipo = row.get('Tipo') || '?';
+            const local = row.get('Local') || 'N/D';
+            const total = row.get('Total') || '0';
+            const transacao = row.get('Transação') || 'N/A';
+            
+            const tipoEmoji = tipo === 'Compra' ? '🛒' : '💰';
+
+            return `**${data} - ${tipoEmoji} ${tipo} em ${local}** (Total: ${total} PO)\n` +
+                   `\`\`\`Itens: ${transacao}\`\`\``;
+        });
+
+        // 3. Paginar e enviar os Embeds
+        const embedsToSend = [];
+        const embedTitle = `Histórico de Transações para ${charName}`;
+        let currentDescription = '';
+
+        for (const line of allLines) {
+            const lineWithNewline = line + '\n\n';
+            if (currentDescription.length + lineWithNewline.length > 2000) {
+                embedsToSend.push(new EmbedBuilder().setTitle(embedTitle).setColor(0x3498DB).setDescription(currentDescription)); // Azul
+                currentDescription = lineWithNewline;
+            } else {
+                currentDescription += lineWithNewline;
+            }
+        }
+        embedsToSend.push(new EmbedBuilder().setTitle(embedTitle).setColor(0x3498DB).setDescription(currentDescription));
+
+        // 4. Envia as respostas
+        await interaction.editReply({ embeds: [embedsToSend[0]] });
+        for (let i = 1; i < embedsToSend.length; i++) {
+            await interaction.followUp({ embeds: [embedsToSend[i]], ephemeral: true });
         }
     },
 

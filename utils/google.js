@@ -11,6 +11,7 @@ const TABELA_CRAFT_ID = process.env.TABELA_CRAFT_ID;
 const INVENTARIO_SHEET_ID =
     process.env.INVENTARIO_SHEET_ID ||
     "1j819p3VCgRpUz3rNX0lg24M5bS9jNKG-mXQ3usxLGfo";
+const COMPRAS_VENDAS_ID = process.env.COMPRAS_VENDAS_ID;
 
 let credenciais;
 try {
@@ -32,6 +33,7 @@ const docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
 const docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
 const docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
 const docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
+const docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
 
 
 // --- 3. Lógica Principal do Sorteio (Refatorada) ---
@@ -770,6 +772,7 @@ module.exports = {
   docControle,
   docInventario,
   docCraft,
+  docComprasVendas,
   getPlayerTokenCount,
   spendPlayerTokens,
   fetchPlayerLevels,

@@ -14,28 +14,27 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle(`🎉 Atualização v${latestUpdate.version}: ${latestUpdate.title}`)
             .setColor(0x5865F2)
-            .setDescription(`*Publicado em: ${latestUpdate.date}*`)
+            //.setDescription(`*Publicado em: ${latestUpdate.date}*`)
             .setTimestamp();
 
         // Adiciona campos para cada secção
+        let description = `*Publicado em: ${latestUpdate.date}*\n`;
         if (latestUpdate.features.length > 0) {
-            embed.addFields({ 
-                name: '✨ Novas Features', 
-                value: '• ' + latestUpdate.features.join('\n• ') 
-            });
+            description += '\n**✨ Novas Features**\n' + '• ' + latestUpdate.features.join('\n• ');
         }
         if (latestUpdate.fixes.length > 0) {
-            embed.addFields({ 
-                name: '🐛 Correções de Bugs', 
-                value: '• ' + latestUpdate.fixes.join('\n• ') 
-            });
+            description += '\n\n**🐛 Correções de Bugs**\n' + '• ' + latestUpdate.fixes.join('\n• ');
         }
         if (latestUpdate.backend.length > 0) {
-            embed.addFields({ 
-                name: '⚙️ Backend/Outros', 
-                value: '• ' + latestUpdate.backend.join('\n• ') 
-            });
+            description += '\n\n**⚙️ Backend/Outros**\n' + '• ' + latestUpdate.backend.join('\n• ');
         }
+
+        // Trunca a descrição se ela (por algum motivo) ultrapassar o limite
+        if (description.length > 4096) {
+            description = description.substring(0, 4093) + '...';
+        }
+        embed.setDescription(description);
+        // +++ FIM DA CORREÇÃO +++
 
         await interaction.reply({ embeds: [embed] });
     }
