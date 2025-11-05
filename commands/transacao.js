@@ -78,6 +78,9 @@ module.exports = {
         if (subLojaMatch) {
             tipoDeLojaLimpo = subLojaMatch[1].trim(); // "Loja"
             subLojaNome = subLojaMatch[2].trim(); // "O Pavilhão das Mil Brasas"
+        } else {
+            // Se não há sub-loja, o nome da loja é a string inteira
+            tipoDeLojaLimpo = tipoDeLoja;
         }
         // +++ FIM DA NOVA LÓGICA DE PARSE +++
 
@@ -85,7 +88,7 @@ module.exports = {
         const hasEstoque = tipoDeLoja.includes('[Estoque]');
         const isCaravana = tipoDeLoja.includes('[Caravana]');
         // (Ainda não usamos o {CD})
-
+        
         // 2. Limpa TODOS os outros marcadores ([, *, {) do nome da aba
         // Usa uma regex que encontra o primeiro [, *, ou { e corta
         const specialCharMatch = tipoDeLojaLimpo.match(/[\*\[\{]/); 
@@ -98,7 +101,8 @@ module.exports = {
             // +++ ADICIONADO: Salva quem executou o comando +++
             ownerId: interaction.user.id, 
             rules: rules,
-            tipoDeLojaLimpo: tipoDeLojaLimpo, // Agora está limpo
+            //tipoDeLojaLimpo: tipoDeLojaLimpo, // Agora está limpo
+            tipoDeLojaLimpo: tipoDeLojaLimpo.replace(/[\*\[\{\(\)\]\d]/g, '').trim(),
             subLojaNome: subLojaNome,
             hasMesaCheck: hasMesaCheck,
             hasEstoque: hasEstoque,
