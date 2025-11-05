@@ -15,6 +15,8 @@ const {
     userMention
 } = require('discord.js');
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // <<< NOVO: Importa o filterManager >>>
 const { 
     buildFilterButton, 
