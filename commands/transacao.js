@@ -86,13 +86,20 @@ module.exports = {
         const isCaravana = tipoDeLoja.includes('[Caravana]');
         // (Ainda não usamos o {CD})
 
+        // 2. Limpa TODOS os outros marcadores ([, *, {) do nome da aba
+        // Usa uma regex que encontra o primeiro [, *, ou { e corta
+        const specialCharMatch = tipoDeLojaLimpo.match(/[\*\[\{]/); 
+        if (subLojaMatch === null && specialCharMatch) { // Só executa se não for uma sub-loja (que já foi limpa)
+             tipoDeLojaLimpo = tipoDeLojaLimpo.substring(0, specialCharMatch.index).trim();
+        }
+
         const state = {
             interactionId: interaction.id,
             // +++ ADICIONADO: Salva quem executou o comando +++
             ownerId: interaction.user.id, 
             rules: rules,
-            tipoDeLojaLimpo: tipoDeLojaLimpo.replace(/[\*\[\{\}\d]/g, '').trim(), // Limpa caracteres especiais restantes
-            subLojaNome: subLojaNome, // <<< ADICIONADO: Salva a sub-loja
+            tipoDeLojaLimpo: tipoDeLojaLimpo, // Agora está limpo
+            subLojaNome: subLojaNome,
             hasMesaCheck: hasMesaCheck,
             hasEstoque: hasEstoque,
             isCaravana: isCaravana,
