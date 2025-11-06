@@ -74,10 +74,11 @@ module.exports = {
             // 3. Se tiver só 1 personagem, exibe direto
             if (characters.length === 1) {
                 const selectedCharRow = characters[0];
-                //await registerChannel(charRow, interaction.channel.id);
-                const embed = await buildInventoryEmbed(selectedCharRow);
-                // Envia a nova mensagem (ou edita a resposta do defer)
-                const message = await interaction.editReply({ embeds: [embed] });
+                const embed = await buildInventoryEmbed(selectedCharRow); //
+
+                // +++ CORREÇÃO: Envia como uma NOVA mensagem pública e apaga a efêmera +++
+                const message = await interaction.channel.send({ embeds: [embed] });
+                await interaction.deleteReply(); // Apaga o "A pensar..." efêmero
                 // Registra o canal e ID da mensagem, passando o client
                 // A função registerChannel agora lida com apagar a msg antiga se necessário
                 // Passa a linha selecionada E a lista completa (neste caso, com 1 item)
@@ -154,17 +155,19 @@ module.exports = {
                 return;
             }
 
-            // Defer PÚBLICO
-            await interaction.deferReply({ ephemeral: false }); // <-- 1. Cria a msg "A pensar..."
+            // +++ MUDANÇA: Substitui o defer por um update, que também serve como 'ack' +++
+            await interaction.update({ content: 'A carregar o inventário...', components: [] });
 
             const embed = await buildInventoryEmbed(selectedCharRow);
             
-            // === Editar a Resposta ===
-            // 3. EDITA a msg "A pensar..." e coloca o embed nela.
-            const message = await interaction.editReply({ embeds: [embed] }); // <<< CORRIGIDO
+            // +++ CORREÇÃO: Envia o inventário como uma NOVA mensagem pública independente +++
+            const message = await interaction.channel.send({ embeds: [embed] });
 
             // Passa a linha selecionada E a lista completa de personagens do jogador (state.characters)
             await registerChannel(selectedCharRow, state.characters, interaction.channel.id, message.id, interaction.client);
+
+            // +++ MUDANÇA: Usa deleteReply() para apagar a mensagem "A carregar..." +++
+            await interaction.deleteReply().catch(e => console.warn(`[WARN inventario] Falha ao apagar msg efêmera do menu: ${e.message}`));
 
             interaction.client.pendingInventarios.delete(originalInteractionId);
             

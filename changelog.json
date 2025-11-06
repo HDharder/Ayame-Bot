@@ -1,6 +1,16 @@
 {
   "updates": [
     {
+      "version": "2.0.1",
+      "date": "2025-11-06",
+      "title": "Hotfix - Corrigido o fluxo do `/inventario`",
+      "features": [],
+      "fixes": [
+        "Corrigido o fluxo do `/inventario` para que as respostas (para 1 ou >1 personagem) sejam sempre **públicas** e **independentes** (não-efêmeras e sem 'reply')."
+      ],
+      "backend": []
+    },
+    {
       "version": "2.0.0",
       "date": "2025-11-05",
       "title": "A Ascensão da Economia: Comandos /transacao, /gasto, /exibir e /staff",
