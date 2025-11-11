@@ -188,7 +188,7 @@ async function handlePlayerShop(interaction, state) {
  * @param {number} page - A página a ser exibida (base 0).
  */
 async function buildPaginatedShopMenu(state, page = 0) {
-    const { tipoDeLojaLimpo, interactionId, shopFilter, subLojaNome } = state; // <<< 1. Puxa o subLojaNome
+    const { tipoDeLojaLimpo, interactionId, shopFilter, subLojaNome, persuasionSuccess } = state;
     await docComprasVendas.loadInfo(); //
     const sheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     if (!sheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
@@ -210,10 +210,15 @@ async function buildPaginatedShopMenu(state, page = 0) {
 
     const ITEMS_PER_PAGE = 25; // Limite de opções de um Select Menu
     const options = [];
+
+    // Move o botão de finalizar para cima, para podermos desabilitá-lo
+    // +++ LÓGICA DE PREÇO (Persuasão) +++
+    const priceCol = persuasionSuccess ? 'Preço (cd)' : 'Preço'; //
+    const priceLabel = persuasionSuccess ? 'Preço (CD)' : 'Preço';
     
     for (const row of filteredRows) {
         const itemNome = row.get('Item');
-        const itemPreco = parseFloat(row.get('Preço')?.replace(',', '.')) || 0;
+        const itemPreco = parseFloat(row.get(priceCol)?.replace(',', '.')) || 0;
 
         let quant = 0;
         let descricaoEstoque = "Estoque ilimitado"; // Padrão
@@ -229,7 +234,7 @@ async function buildPaginatedShopMenu(state, page = 0) {
             options.push(
                 new StringSelectMenuOptionBuilder()
                     .setLabel(itemNome.substring(0, 100))
-                    .setDescription(`Preço: ${itemPreco.toFixed(2)} PO | ${descricaoEstoque}`)
+                    .setDescription(`${priceLabel}: ${itemPreco.toFixed(2)} PO | ${descricaoEstoque}`)
                     // O 'value' será o nome exato para o modal dinâmico
                     .setValue(itemNome.substring(0, 100)) 
             );
@@ -243,7 +248,6 @@ async function buildPaginatedShopMenu(state, page = 0) {
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const itemsToShow = options.slice(startIndex, endIndex); // "Fatia" os itens para esta página
 
-    // Move o botão de finalizar para cima, para podermos desabilitá-lo
     const finalizeButton = new ButtonBuilder()
         .setCustomId(`transacao_compra_finalizar|${interactionId}`)
         .setLabel('Definir Quantidades')
@@ -352,8 +356,12 @@ async function processCompra(interaction, state) {
         console.warn(`[WARN processCompra] Falha ao editar a msg do menu para "Processando": ${e.message}`);
     }
 
-    const { character, tipoDeLojaLimpo, hasEstoque, isCaravana, selectedItems, shopMessageId, subLojaNome } = state; // <<< Puxa o subLojaNome
+    const { character, tipoDeLojaLimpo, hasEstoque, isCaravana, selectedItems, shopMessageId, subLojaNome, persuasionSuccess } = state; // <<< Puxa o subLojaNome
     const playerRow = character.row; // A linha da planilha Inventário
+
+    // +++ CORREÇÃO: Fecha a brecha de rolagem (se houver) +++
+    await closeRollBrecha(interaction.client, interaction.channel.id, playerRow.get('JOGADOR'));
+
     
     await docComprasVendas.loadInfo(); //
     const shopSheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
@@ -371,6 +379,8 @@ async function processCompra(interaction, state) {
             row.get('Loja') && row.get('Loja').trim().toLowerCase() === subLojaNome.toLowerCase()
         );
     }
+
+    const priceCol = persuasionSuccess ? 'Preço (cd)' : 'Preço';
 
     const shopItemsMap = new Map();
     baseShopRows.forEach(r => shopItemsMap.set(r.get('Item'), r)); // Mapeia itens da loja pelo nome
@@ -402,7 +412,7 @@ async function processCompra(interaction, state) {
             continue;
         }
 
-        const price = parseFloat(shopItem.get('Preço')?.replace(',', '.')) || 0;
+        const price = parseFloat(shopItem.get(priceCol)?.replace(',', '.')) || 0;
         
         // Validação de Estoque
         if (hasEstoque) {
@@ -638,7 +648,7 @@ async function cacheSellPrices(categories) {
  * @param {number} page - A página a ser exibida (base 0).
  */
 async function buildSellSelectMenu(state, page = 0) {
-    const { interactionId, character, rules, tipoDeLojaLimpo, sellFilter, subLojaNome } = state;
+    const { interactionId, character, rules, tipoDeLojaLimpo, sellFilter, subLojaNome, persuasionSuccess } = state;
     const playerRow = character.row;
 
     // --- 1. Buscar Regras de Venda e Itens da Loja ---
@@ -652,9 +662,11 @@ async function buildSellSelectMenu(state, page = 0) {
     
     await shopSheet.loadHeaderRow(1);
 
-    // 1a. Pegar Fator de Venda (F2)
-    await shopSheet.loadCells('F2');
-    const fatorDeVenda = parseFloat(shopSheet.getCellByA1('F2').value) || 0.5; // Padrão 50%
+    // 1a. Pegar Fator de Venda (G2 ou I2)
+    const fatorCol = persuasionSuccess ? 'Fator de Venda (cd)' : 'Fator de Venda'; //
+    const priceLabel = persuasionSuccess ? 'Venda (CD)' : 'Venda';
+    await shopSheet.loadCells('G2:H2'); // Carrega a célula correta
+    const fatorDeVenda = parseFloat(shopSheet.getCell(1, shopSheet.headerValues.indexOf(fatorCol)).value) || 0.5;
 
     // 1b. Pegar itens que a loja compra (para a regra *)
     const shopBuyItems = new Set();
@@ -778,7 +790,7 @@ async function buildSellSelectMenu(state, page = 0) {
             .addOptions(itemsToShow.map(item =>
             new StringSelectMenuOptionBuilder()
                 .setLabel(item.name)
-                .setDescription(`Vender por: ${item.sellPrice.toFixed(2)} PO`)
+                .setDescription(`${priceLabel}: ${item.sellPrice.toFixed(2)} PO`)
                 // O 'value' precisa ser único por item
                 .setValue(`${item.name}|${item.unitIndex}`) 
             ));
@@ -840,6 +852,9 @@ async function processVenda(interaction, state) {
     const username = playerRow.get('JOGADOR');
     const characterName = playerRow.get('PERSONAGEM');
 
+    // +++ CORREÇÃO: Fecha a brecha de rolagem (se houver) +++
+    await closeRollBrecha(interaction.client, interaction.channel.id, username);
+
     let totalGoldGained = 0;
     const aggregatedItems = new Map();
     const itemsToLog = [];
@@ -847,7 +862,7 @@ async function processVenda(interaction, state) {
     // 1. Agregar itens e calcular ganhos
     for (const item of itemsToSell) {
         // Parseia o preço da description (ex: "Vender por: 1.00 PO")
-        const priceMatch = item.description.match(/Vender por: ([\d\.]+)/);
+        const priceMatch = item.description.match(/Venda(?: \(CD\))?: ([\d\.]+)/);
         const price = parseFloat(priceMatch ? priceMatch[1] : 0);
         
         totalGoldGained += price;
@@ -923,6 +938,116 @@ async function processVenda(interaction, state) {
     }
 }
 
+// +++ INÍCIO: NOVAS FUNÇÕES DE PERSUASÃO +++
+
+/**
+ * (NOVA FUNÇÃO) Fecha/Limpa uma brecha de rolagem pendente para um jogador.
+ * @param {import('discord.js').Client} client
+ * @param {string} channelId
+ * @param {string} username
+ */
+async function closeRollBrecha(client, channelId, username) {
+    if (!client.pendingRolls || !username || !channelId) return;
+    
+    const key = `${channelId}-${username.trim().toLowerCase()}`;
+    if (client.pendingRolls.delete(key)) {
+        console.log(`[closeRollBrecha] Brecha de rolagem fechada para ${key}`);
+    }
+}
+
+
+/**
+ * Abre a "brecha" de rolagem para persuasão.
+ * Salva os dados na RAM (client.pendingRolls).
+ * @param {import('discord.js').Interaction} interaction
+ * @param {object} state
+ * @param {string} shopMessageId - O ID da mensagem da loja que será atualizada.
+ */
+async function openRollBrecha(interaction, state, shopMessageId) {
+    const client = interaction.client;
+    if (!client.pendingRolls) client.pendingRolls = new Map();
+
+    const key = `${interaction.channel.id}-${state.character.row.get('JOGADOR').trim().toLowerCase()}`;
+
+    // 1. Busca os "Termos" na planilha da loja
+    let termos = [];
+    try {
+        await docComprasVendas.loadInfo();
+        const shopSheet = docComprasVendas.sheetsByTitle[state.tipoDeLojaLimpo];
+        if (shopSheet) {
+            await shopSheet.loadHeaderRow(1);
+            if (shopSheet.headerValues.includes('Termos')) {
+                const rows = await shopSheet.getRows();
+                const shopRow = state.subLojaNome 
+                    ? rows.find(r => r.get('Loja')?.toLowerCase() === state.subLojaNome.toLowerCase())
+                    : rows[0]; // Pega a primeira linha se não for sub-loja
+                
+                const termosString = shopRow.get('Termos');
+                if (termosString && termosString !== '-') {
+                    termos = termosString.split(',').map(t => t.trim().toLowerCase());
+                }
+            }
+        }
+    } catch (e) {
+        console.error(`[openRollBrecha] Falha ao buscar termos: ${e.message}`);
+    }
+
+    // 2. Salva a brecha na RAM
+    client.pendingRolls.set(key, {
+        cd: state.persuasionCD,
+        rollType: 'd20',
+        requiredText: termos.length > 0 ? termos : [], //
+        interactionId: state.interactionId,
+        channelId: interaction.channel.id, // <<< ADICIONADO: O canal onde a loja está
+        shopMessageId: shopMessageId, // <<< ADICIONADO: O ID da mensagem da loja
+        sourceCommand: 'transacao' // Para o listener saber o que chamar
+    });
+
+    console.log(`[openRollBrecha] Brecha aberta para ${key} (CD: ${state.persuasionCD}, Termos: ${termos.join(', ')})`);
+}
+
+/**
+ * Chamado pelo rollemListener.js quando uma rolagem de persuasão é resolvida.
+ * @param {import('discord.js').Client} client
+ * @param {object} brecha - O objeto salvo no client.pendingRolls
+ * @param {boolean} rollSuccess - Se o jogador passou no teste de CD
+ */
+async function handlePersuasionResult(client, brecha, rollSuccess) {
+    const state = client.pendingLoots.get(brecha.interactionId);
+    if (!state) return; // Estado da transação expirou
+
+    state.persuasionSuccess = rollSuccess;
+    state.persuasionAttempted = true; // Marca que a tentativa foi feita
+    /*
+    // Reconstrói o menu (Compra ou Venda) com os novos preços
+    const { content, components } = state.rules.possibilidades.includes('venda')
+        ? await buildSellSelectMenu(state, 0)
+        : await buildPaginatedShopMenu(state, 0);*/
+    
+    // Edita a mensagem da loja
+    try {
+        // +++ CORREÇÃO: Reconstrói o menu correto (Compra ou Venda) +++
+        let content, components;
+        if (state.activeMenu === 'venda') {
+            ({ content, components } = await buildSellSelectMenu(state, 0)); //
+        } else {
+            ({ content, components } = await buildPaginatedShopMenu(state, 0)); //
+        }
+    
+        const channel = client.channels.cache.get(brecha.channelId); // O canal onde a brecha foi aberta
+        if (!channel) throw new Error(`Canal da brecha (${brecha.channelId}) não encontrado no cache.`);
+        
+        const shopMessage = await channel.messages.fetch(brecha.shopMessageId); // O ID da msg da loja
+        
+        await shopMessage.edit({ content: content, components: components });
+        await shopMessage.react(rollSuccess ? '🎉' : '😥'); // Reage à mensagem da LOJA
+    } catch (e) {
+        console.error(`[handlePersuasionResult] Falha ao editar a mensagem da loja ${brecha.shopMessageId}: ${e.message}`);
+    }
+}
+// +++ FIM: NOVAS FUNÇÕES DE PERSUASÃO +++
+ 
+
 module.exports = {
     validateMarketChannel,
     validateMesaCheck,
@@ -931,6 +1056,9 @@ module.exports = {
     buildPaginatedShopMenu,
     processCompra,
     buildSellSelectMenu,
-    processVenda
+    processVenda,
+    openRollBrecha,
+    handlePersuasionResult,
+    closeRollBrecha
     // (handleVenda será adicionado aqui)
 };

@@ -20,7 +20,8 @@ const {
     buildPaginatedShopMenu, // <<< ATUALIZADO
     processCompra,
     buildSellSelectMenu, // <<< IMPORTA A NOVA FUNÇÃO
-    processVenda
+    processVenda,
+    openRollBrecha
 } = require('../utils/transacaoUtils.js'); //
 const { buildDynamicQuantityModal, MAX_MODAL_ITEMS } = require('../utils/modalUtils.js'); //
 const { handleFilterButton, handleFilterModal } = require('../utils/filterManager.js'); //
@@ -87,7 +88,10 @@ module.exports = {
         const hasMesaCheck = tipoDeLoja.includes('*');
         const hasEstoque = tipoDeLoja.includes('[Estoque]');
         const isCaravana = tipoDeLoja.includes('[Caravana]');
-        // (Ainda não usamos o {CD})
+        
+        // Extrai o CD de Persuasão
+        const persuasionMatch = tipoDeLoja.match(/\{(\d+)\}/);
+        const persuasionCD = persuasionMatch ? parseInt(persuasionMatch[1], 10) : null;
         
         // 2. Limpa TODOS os outros marcadores ([, *, {) do nome da aba
         // Usa uma regex que encontra o primeiro [, *, ou { e corta
@@ -107,6 +111,7 @@ module.exports = {
             hasMesaCheck: hasMesaCheck,
             hasEstoque: hasEstoque,
             isCaravana: isCaravana,
+            persuasionCD: persuasionCD,
             character: null, // Será preenchido no (Passo 4)
             selectedItems: [], // Para o fluxo de Compra
             // +++ ADICIONADO: Salva os personagens no state +++
@@ -184,18 +189,24 @@ module.exports = {
     async continueFlow(interaction, state) {
         const { possibilidades } = state.rules;
 
+        /*/ +++ NOVO: Abre a brecha de rolagem ANTES de enviar o menu +++
+        if (state.persuasionCD && !state.persuasionAttempted) {
+            await openRollBrecha(interaction, state, interaction.id);
+        }*/
+
         // 5. Direciona para Compra, Venda ou Escolha
         // +++ CORREÇÃO: Remove o 'ephemeral' (flags: []) para tornar a resposta PÚBLICA +++
         if (possibilidades === 'compra') {
+            state.activeMenu = 'compra'; // <<< GUARDA O MENU ATIVO
             // +++ MUDANÇA: Chama a nova função de paginação, começando na página 0 +++
             const { content, components } = await buildPaginatedShopMenu(state, 0); //
             const shopMessage = await interaction.editReply({ content: content, components: components, flags: [] });
-            state.shopMessageId = shopMessage.id;
-        
+            state.shopMessageId = shopMessage.id; // <<< ATUALIZAÇÃO: Salva o ID da mensagem        
         } else if (possibilidades === 'venda') {
+            state.activeMenu = 'venda'; // <<< GUARDA O MENU ATIVO
             const { content, components } = await buildSellSelectMenu(state, 0); // <<< CHAMA A NOVA FUNÇÃO
-            await interaction.editReply({ content: content, components: components, flags: [] });
-
+            const shopMessage = await interaction.editReply({ content: content, components: components, flags: [] });
+            state.shopMessageId = shopMessage.id; // <<< ATUALIZAÇÃO: Salva o ID da mensagem
         } else if (possibilidades === 'compra e venda') {
             const buttons = new ActionRowBuilder()
                 .addComponents(
@@ -207,6 +218,12 @@ module.exports = {
                 components: [buttons],
                 flags: [] // A escolha é pública
             });
+            state.shopMessageId = (await interaction.fetchReply()).id; // Salva o ID da mensagem (dos botões)
+         }
+
+        // +++ NOVO: Abre a brecha de rolagem DEPOIS de a mensagem da loja existir +++
+        if (state.persuasionCD && !state.persuasionAttempted && state.shopMessageId && possibilidades !== 'compra e venda') {
+            await openRollBrecha(interaction, state, state.shopMessageId);
         }
     },
 
@@ -329,19 +346,38 @@ module.exports = {
 
         // --- Botão 'Comprar' (após 'compra e venda') ---
         if (action === 'transacao_compra') {
-            await interaction.update({ content: 'Carregando a loja... ⏳', components: [] });
+            state.activeMenu = 'compra'; // <<< GUARDA O MENU ATIVO
+
+            // +++ MUDANÇA: Atualiza a mensagem *antes* de carregar os dados +++
+            // +++ CORREÇÃO: Remove o 'fetchReply' e usa o 'interaction.message.id' +++
+            const shopMessage = await interaction.update({ content: 'Carregando a loja... ⏳', components: [], fetchReply: true });
+            state.shopMessageId = interaction.message.id; // Salva o ID da mensagem da loja
+
             // +++ MUDANÇA: Chama a nova função de paginação, começando na página 0 +++
-            const { content, components } = await buildPaginatedShopMenu(state, 0); 
-            const shopMessage = await interaction.editReply({ content: content, components: components }); // +++ MUDANÇA: Usa editReply
-            state.shopMessageId = shopMessage.id;
-        
+            const { content, components } = await buildPaginatedShopMenu(state, 0); //
+            await interaction.editReply({ content: content, components: components });
+
+            // +++ CORREÇÃO: Abre a brecha AGORA +++
+            if (state.persuasionCD && !state.persuasionAttempted) {
+                await openRollBrecha(interaction, state, state.shopMessageId);
+            }
+
         // --- Botão 'Vender' (após 'compra e venda') ---
         } else if (action === 'transacao_venda') {
+            state.activeMenu = 'venda'; // <<< GUARDA O MENU ATIVO
+
+            // +++ MUDANÇA: Atualiza a mensagem *antes* de carregar os dados +++
             await interaction.update({ content: 'Carregando seu inventário para venda... ⏳', components: [] });
+            state.shopMessageId = interaction.message.id;
+
             const { content, components } = await buildSellSelectMenu(state, 0); // <<< CHAMA A NOVA FUNÇÃO
-            const shopMessage = await interaction.editReply({ content: content, components: components });
-            state.shopMessageId = shopMessage.id;
-        
+            await interaction.editReply({ content: content, components: components });
+
+            // +++ CORREÇÃO: Abre a brecha AGORA +++
+            if (state.persuasionCD && !state.persuasionAttempted) {
+                await openRollBrecha(interaction, state, state.shopMessageId);
+            }
+
         // --- Botão 'Definir Quantidades' (Fluxo de Compra) ---
         } else if (action === 'transacao_compra_finalizar') {
             if (!state.selectedItems || state.selectedItems.length === 0) {
@@ -372,9 +408,8 @@ module.exports = {
             // Reconstrói o menu da loja na nova página
             const { content, components } = await buildPaginatedShopMenu(state, newPage); //
             
-            // Atualiza a mensagem efêmera com o novo menu
-            const shopMessage = await interaction.update({ content: content, components: components });
-            state.shopMessageId = shopMessage.id;
+            // Atualiza a mensagem
+            await interaction.update({ content: content, components: components });
 
         // +++ NOVO: Lógica dos Botões de Paginação (Venda) +++
         } else if (action === 'transacao_venda_prev' || action === 'transacao_venda_next') {
@@ -383,9 +418,8 @@ module.exports = {
 
             // Reconstrói o menu de venda na nova página
             const { content, components } = await buildSellSelectMenu(state, newPage); //
-            const shopMessage = await interaction.update({ content: content, components: components });
-            state.shopMessageId = shopMessage.id;
-            
+            await interaction.update({ content: content, components: components });
+
         // +++ NOVO: Lógica dos Botões de Filtro +++
         } else if (action === 'transacao_filtro_compra' || action === 'transacao_filtro_venda') {
             const currentFilter = (action === 'transacao_filtro_compra') ? state.shopFilter : state.sellFilter;
@@ -467,7 +501,7 @@ module.exports = {
 
             try {
                 // Pega o ID da mensagem da loja (que já guardámos)
-                const msgId = state.shopMessageId;
+                const msgId = state.shopMessageId || interaction.message.id; // O ID da mensagem do botão
                 if (msgId) {
                     // Apaga a mensagem da loja
                     await interaction.channel.messages.delete(msgId);

@@ -1,6 +1,35 @@
 {
   "updates": [
     {
+      "version": "2.1.0",
+      "date": "2025-11-11",
+      "title": "Integração com Rollem e Otimização de Performance",
+      "features": [
+        "**Integração com o Bot Rollem:** O bot agora \"escuta\" ativamente as respostas do bot Rollem (`rollem#7705`) para validar rolagens de comandos.",
+        "**Mecânica de Persuasão (`{cd}`) em Lojas:** Lojas marcadas com `{CD}` (ex: `Loja*{15}`) na planilha `Player ID` agora abrem uma \"brecha de rolagem\".",
+        "Se o jogador fizer uma rolagem de `d20` com o \"Termo\" correto (definido na loja, ex: \"persuasão\") e passar no CD, a loja é atualizada *visualmente* (e funcionalmente) para usar os preços de desconto (colunas `Preço (cd)` e `Fator de Venda (cd)`).",
+        "A rolagem de persuasão é invalidada se a rolagem final tiver mais de um dado (ex: `2d20` sem o kh1), pois o sistema verifica se apenas 1 dado `d20` válido foi rolado.",
+        "**Confirmação de Rolagem:** Se o jogador fizer uma rolagem de `d20` válida (1 dado, no canal certo) mas esquecer o \"Termo\" (ex: \"persuasão\"), o bot perguntará (com botões Sim/Não) se aquela rolagem deve contar.",
+        "A brecha de rolagem é agora corretamente fechada em todos os cenários (sucesso, falha, clique em 'Não' ou ao finalizar a transação)."
+      ],
+      "fixes": [
+        "Corrigido o erro crítico `[429] Quota Exceeded` (Google API) que ocorria durante picos de uso (ex: `/transacao`, `/loot`).",
+        "Corrigido o erro `Disallowed intents` que impedia o bot de iniciar (requer ativação manual da 'MESSAGE CONTENT INTENT' no Portal de Desenvolvedores do Discord).",
+        "Corrigido o erro `Unknown Interaction` (timeout de 3 segundos) ao clicar nos botões 'Comprar' ou 'Vender'. O bot agora mostra \"Carregando...\" imediatamente.",
+        "Corrigido o bug `Unknown Message` que impedia a atualização do menu da loja após a rolagem de persuasão. O `shopMessageId` agora é rastreado corretamente.",
+        "Corrigido o bug em que o total da Venda era `0 PO`. O parser agora lê a descrição de preço dinâmica (ex: `Venda (CD): XX PO`).",
+        "Corrigido o erro `This cell has not been loaded yet` no menu de Venda ao carregar as células `F2` e `G2` (Fatores de Venda)."
+      ],
+      "backend": [
+        "Implementado um cache global (`client.inventoryEmbedData`) para os dados de embed (`Tokens`, `Nível`, `XP`). O cache é carregado na inicialização e atualizado a cada 15 minutos, resolvendo a falha de quota da API do Google.",
+        "Otimizado drasticamente o uso de RAM em `index.js` ao configurar o `makeCache` do `discord.js`. Caches desnecessários (como `UserManager`, `GuildMemberManager`, `PresenceManager`) foram desabilitados ou limitados.",
+        "Adicionadas as `Intents` `GuildMessages` e `MessageContent` ao `index.js`.",
+        "Adicionado `client.pendingRolls` e `client.pendingRollConfirmations` (com limpeza pelo 'Recolhedor de Lixo').",
+        "Criado `utils/rollemListener.js` com um parser de regex para analisar as respostas complexas do Rollem (incluindo `~~descartados~~`, `**críticos**` e rolagens mistas).",
+        "Criado `utils/rollObserver.js` para gerir os botões de confirmação (Sim/Não)."
+      ]
+    },
+    {
       "version": "2.0.1",
       "date": "2025-11-06",
       "title": "Hotfix - Corrigido o fluxo do `/inventario`",

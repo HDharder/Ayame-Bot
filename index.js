@@ -1,6 +1,9 @@
 // --- 1. Importação das Bibliotecas ---
 require('dotenv').config();
 const { loadChannelRules } = require('./utils/channelGuard.js'); // +++ IMPORTA O GUARD +++
+const { handleRollemMessage } = require('./utils/rollemListener.js'); // <<< NOVO: Importa o escutador
+const rollObserver = require('./utils/rollObserver.js');
+const { preloadInventoryEmbedData } = require('./utils/google.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const ADMIN_SERVER_ID = process.env.ADMIN_SERVER_ID;
@@ -10,17 +13,66 @@ const {
   REST,
   Routes,
   Events,
-  Collection, // Usamos Collection em vez de Map, é otimizado para discord.js
-  MessageFlagsBitField
+  Collection,
+  MessageFlagsBitField,
+  // +++ NOVAS IMPORTAÇÕES PARA OTIMIZAÇÃO +++
+  Options, 
+  Partials 
 } = require('discord.js');
 
 // --- 2. Configuração das Credenciais ---
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
-const client = new Client({ intents: [
-  GatewayIntentBits.Guilds,
-  GatewayIntentBits.GuildMessageReactions
-]});
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ],
+    
+    // +++ CÓDIGO DE OTIMIZAÇÃO DE RAM ADICIONADO +++
+
+    // 1. ADICIONA 'PARTIALS'
+    // Isto garante que o bot possa "ver" reações em mensagens
+    // que NÃO estão no cache (mensagens antigas).
+    // O seu 'handleReaction' já está pronto para isso.
+    partials: [
+        Partials.Message,
+        Partials.Reaction,
+        Partials.User
+    ],
+
+    // 2. CONFIGURA O CACHE (makeCache)
+    // Aqui dizemos o que o bot deve ou não guardar na RAM.
+    makeCache: Options.cacheWithLimits({
+        // --- LIMITES BAIXOS ---
+        // Guarda apenas 10 mensagens por canal. Suficiente para
+        // apanhar reações recentes, mas liberta muita RAM.
+        MessageManager: 10, 
+        
+        // --- DESLIGADOS (0 = Sem cache) ---
+        
+        // A MAIOR ECONOMIA DE RAM: Não guardar utilizadores/membros.
+        // O bot irá buscá-los (fetch) quando precisar.
+        UserManager: 0,
+        GuildMemberManager: 0,
+
+        // Não guardar status (ex: "Jogando...")
+        PresenceManager: 0, 
+        // Não guardar quem está em canais de voz
+        VoiceStateManager: 0, 
+        
+        // Outros caches que o seu bot não parece usar
+        GuildEmojiManager: 0,
+        GuildStickerManager: 0,
+        GuildScheduledEventManager: 0,
+        ApplicationCommandManager: 0, // Comandos /
+        
+        // Mantém threads, pois 'transacao' pode usá-las
+        ThreadManager: 50, 
+    })
+});
 
 // --- 3. Carregador de Comandos ---
 client.commands = new Collection();
@@ -32,6 +84,9 @@ client.pendingLoots = new Map();
 client.pendingRelatorios = new Map();
 // Armazena estados pendentes do /inventario
 client.pendingInventarios = new Map();
+client.pendingRolls = new Map();
+// Armazena confirmações de rolagem pendentes
+client.pendingRollConfirmations = new Map();
 client.reactionListeners = new Map();
 const commandsToRegister = [];
 const commandsPath = path.join(__dirname, 'commands');
@@ -114,9 +169,40 @@ client.once(Events.ClientReady, async (bot) => {
   mapsToClean.set('pendingLoots', client.pendingLoots); //
   mapsToClean.set('pendingRelatorios', client.pendingRelatorios); //
   mapsToClean.set('pendingInventarios', client.pendingInventarios); //
+  mapsToClean.set('pendingRolls', client.pendingRolls); //
+  mapsToClean.set('pendingRollConfirmations', client.pendingRollConfirmations); //
 
   // CARREGA AS REGRAS DE CANAL PARA O CACHE
   await loadChannelRules();
+
+  // +++ INÍCIO DA NOVA LÓGICA DE CACHE DE EMBED +++
+  
+  // 1. Cria um local para guardar o cache
+  client.inventoryEmbedData = null;
+
+  // 2. Função para carregar e atualizar o cache
+  const refreshEmbedData = async () => {
+    console.log("[Cache] Carregando/Atualizando dados de embed do inventário...");
+    try {
+        const data = await preloadInventoryEmbedData();
+        if (data) {
+            client.inventoryEmbedData = data;
+            console.log("[Cache] Dados de embed carregados com sucesso.");
+        } else {
+            console.error("[Cache ERRO] preloadInventoryEmbedData retornou nulo. Mantendo cache antigo (se houver).");
+        }
+    } catch (error) {
+        console.error("[Cache ERRO] Falha ao atualizar dados de embed:", error.message);
+    }
+  };
+
+  // 3. Carrega os dados pela primeira vez
+  await refreshEmbedData();
+
+  // 4. Configura um temporizador para atualizar o cache a cada 15 minutos
+  setInterval(refreshEmbedData, 15 * 60 * 1000); 
+
+  // +++ FIM DA NOVA LÓGICA DE CACHE DE EMBED +++
 
   // +++ INICIA O RECOLHEDOR DE LIXO +++
   startRoutineGarbageCollector(); // Inicia o timer
@@ -176,6 +262,10 @@ client.on(Events.InteractionCreate, async interaction => {
           command = cmd; // Atribui o comando encontrado (cmd) à variável externa 'command'
           break;
         }
+      }
+      // +++ CORREÇÃO: Se nenhum comando normal tratar disto, verifica o RollObserver +++
+      if (!command && rollObserver.buttons && rollObserver.buttons.includes(action)) {
+          command = rollObserver;
       }
       // Chama o handler se encontrado, senão avisa e defere
       if (command && command.handleButton) {
@@ -346,5 +436,16 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     }
 });
 
-// --- 7. Login ---
+// --- 7. NOVO: OUVINTE DE MENSAGENS (Para o Rollem) ---
+client.on(Events.MessageCreate, async message => {
+    // Ignora as nossas próprias mensagens
+    if (message.author.id === client.user.id) return;
+
+    // Se for uma mensagem do Rollem, processa-a
+    if (message.author.username === 'rollem') { //
+        await handleRollemMessage(message);
+    }
+});
+
+// --- 8. Login ---
 client.login(DISCORD_TOKEN);

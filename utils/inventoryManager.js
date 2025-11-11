@@ -21,11 +21,12 @@ async function batchUpdateInventories(allPlayerChanges, client) {
 
     try {
         // 1. PRÉ-CARREGAR TUDO
-        const embedData = await preloadInventoryEmbedData();
-         if (!embedData) {
-             console.error("[ERRO BatchUpdate] Falha no preloadInventoryEmbedData. Abortando atualização de inventários.");
-             return false; 
-         }
+        const embedData = client.inventoryEmbedData; 
+        if (!embedData) {
+            // Se o cache estiver vazio (o bot acabou de ligar ou falhou), ele aborta.
+            console.error("[ERRO BatchUpdate] O cache 'client.inventoryEmbedData' está nulo. Abortando atualização.");
+            return false;
+        }
         await preloadItemCategories(docCraft);
         
         await docInventario.loadInfo();
