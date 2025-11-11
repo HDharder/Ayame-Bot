@@ -1,6 +1,19 @@
 {
   "updates": [
     {
+      "version": "2.2.1",
+      "date": "2025-11-11",
+      "title": "Hotfix - Correção de API (Erro 429) na Paginação do /transacao",
+      "features": [],
+      "fixes": [
+        "Corrigido um erro crítico `[429] Quota Exceeded (Read requests)` que ocorria ao usar os botões de paginação (Próxima/Anterior) ou 'Filtrar' nos menus de Compra e Venda do `/transacao`."
+      ],
+      "backend": [
+        "As funções `buildPaginatedShopMenu` e `buildSellSelectMenu` (`utils/transacaoUtils.js`) foram refatoradas para usar um cache de estado (`state.shopRowsCache`, `state.priceCache`).",
+        "O bot agora lê os dados da loja da planilha *uma vez* ao abrir o menu, em vez de fazer um novo pedido à API do Google a cada clique de botão, resolvendo o 'rate limit' de leitura."
+      ]
+    },
+    {
       "version": "2.2.0",
       "date": "2025-11-11",
       "title": "Transações P2P e Overhaul de Estabilidade (API/RAM)",

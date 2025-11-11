@@ -193,8 +193,15 @@ async function buildPaginatedShopMenu(state, page = 0) {
     const sheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     if (!sheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
 
-    await sheet.loadHeaderRow(1);
-    const allRows = await sheet.getRows(); //
+    // +++ INÍCIO DA CORREÇÃO (CACHE DE LEITURA) +++
+    let allRows;
+    if (!state.shopRowsCache) {
+        console.log(`[ShopCache] Cache de COMPRA (state.shopRowsCache) vazio. Buscando...`);
+        await sheet.loadHeaderRow(1);
+        state.shopRowsCache = await sheet.getRows();
+    }
+    allRows = state.shopRowsCache;
+    // +++ FIM DA CORREÇÃO +++
 
     // +++ 2. FILTRO DE SUB-LOJA +++
     let baseRows = allRows;
@@ -755,7 +762,14 @@ async function buildSellSelectMenu(state, page = 0, price_adjust = false) {
     });
 
     // --- 2. Buscar Preços Base do Craft ---
-    const priceCache = await cacheSellPrices(allowedCategories);
+    // +++ INÍCIO DA CORREÇÃO (CACHE DE LEITURA) +++
+    let priceCache;
+    if (!state.priceCache) {
+        console.log(`[ShopCache] Cache de VENDA (state.priceCache) vazio. Buscando...`);
+        state.priceCache = await cacheSellPrices(allowedCategories);
+    }
+    priceCache = state.priceCache;
+    // +++ FIM DA CORREÇÃO +++
 
     // --- 3. Filtrar Inventário e Expandir para Unidades ---
     const playerInventory = [];

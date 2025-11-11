@@ -127,6 +127,8 @@ module.exports = {
             shopFilter: [], // <<< NOVO (Filtro)
             sellFilter: [],  // <<< NOVO (Filtro)
             price_adjust: price_adjust, // + NOVO (P2P)
+            shopRowsCache: null, // +++ CACHE DE COMPRA +++
+            priceCache: null,
             buyerInfo: null // + NOVO (P2P)
         };
 
