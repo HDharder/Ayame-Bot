@@ -87,6 +87,8 @@ client.pendingInventarios = new Map();
 client.pendingRolls = new Map();
 // Armazena confirmações de rolagem pendentes
 client.pendingRollConfirmations = new Map();
+// Armazena propostas P2P pendentes (Sim/Não)
+client.pendingP2PTrades = new Map();
 client.reactionListeners = new Map();
 const commandsToRegister = [];
 const commandsPath = path.join(__dirname, 'commands');
@@ -129,17 +131,33 @@ async function forceCleanup(forceAll = false) {
     for (const [mapName, map] of mapsToClean.entries()) {
         if (!map) continue;
         
-        // Itera pelas chaves (IDs) do mapa
-        for (const interactionId of map.keys()) {
-            // Tenta extrair o timestamp do ID do Discord
-            const timestamp = (BigInt(interactionId) >> 22n) + 1420070400000n;
-            const ageMs = now - Number(timestamp);
-
-            // Se 'forceAll' estiver ativo, OU se o estado for mais antigo que o limite
-            if (forceAll || ageMs > limitMs) {
-                map.delete(interactionId);
-                itemsCleaned++;
+        // +++ INÍCIO DA CORREÇÃO (BUG 2) +++
+        for (const [key, value] of map.entries()) {
+            let timestamp = 0;
+ 
+            if (value && value.timestamp) {
+                // --- Formato Novo (com timestamp) ---
+                // (Usado por pendingRolls, pendingP2PTrades, etc.)
+                timestamp = value.timestamp;
+            } else {
+                // --- Formato Antigo (baseado no Interaction ID) ---
+                // (Usado por pendingLoots, pendingRegistrations, etc.)
+                try {
+                    timestamp = Number((BigInt(key) >> 22n) + 1420070400000n);
+                } catch (e) {
+                    // Ignora chaves que não são Snowflakes (como 'pendingRolls' antes da correção)
+                }
+             }
+ 
+            if (timestamp > 0) {
+                const ageMs = now - timestamp;
+                if (forceAll || ageMs > limitMs) {
+                    map.delete(key);
+                    itemsCleaned++;
+                }
             }
+            // +++ FIM DA CORREÇÃO (BUG 2) +++
+            
         }
     }
     console.log(`[INFO GarbageCollector] Limpeza concluída. ${itemsCleaned} estados removidos.`);
@@ -171,6 +189,8 @@ client.once(Events.ClientReady, async (bot) => {
   mapsToClean.set('pendingInventarios', client.pendingInventarios); //
   mapsToClean.set('pendingRolls', client.pendingRolls); //
   mapsToClean.set('pendingRollConfirmations', client.pendingRollConfirmations); //
+  mapsToClean.set('pendingP2PTrades', client.pendingP2PTrades); //
+  mapsToClean.set('reactionListeners', client.reactionListeners); //
 
   // CARREGA AS REGRAS DE CANAL PARA O CACHE
   await loadChannelRules();
@@ -390,7 +410,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     }
 
     // 3. Verificar se estamos "ouvindo" esta mensagem
-    const listener = client.reactionListeners.get(reaction.message.id);
+    const listener = client.reactionListeners.get(reaction.message.id)?.data;
     if (!listener) return; // Ninguém está ouvindo esta mensagem
 
     // 4. Verificar se é o emoji correto

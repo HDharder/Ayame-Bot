@@ -5,7 +5,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlagsBitField, userMention } =
 const { getChannelOwner } = require('../utils/inventarioUtils.js'); //
 const { docInventario, docComprasVendas, getValuesFromSheet } = require('../utils/google.js'); //
 const { checkChannelPermission } = require('../utils/channelGuard.js'); //
-const { fetchMesasJogadas } = require('../utils/exibirUtils.js'); //
+const { fetchMesasJogadas, fetchP2PHistory } = require('../utils/exibirUtils.js'); //
 
 // Pega o ID do canal de log (o mesmo usado pelo /loot e /relatorio)
 //const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
@@ -21,7 +21,8 @@ module.exports = {
                 .addChoices(
                     { name: 'Gastos', value: 'gastos' },
                     { name: 'Histórico de Mesas Jogadas', value: 'mesas_jogadas' },
-                    { name: 'Histórico de Transações', value: 'transacoes' }
+                    { name: 'Histórico de Transações (Lojas)', value: 'transacoes' },
+                    { name: 'Histórico de Transações (P2P)', value: 'p2p_history' } // + NOVO
                     // { name: 'Opção Futura', value: 'outra_coisa' }
                 )
         ),
@@ -67,6 +68,8 @@ module.exports = {
                 await this.handleExibirTransacoes(interaction, channelInfo.characterRow);
             } else if (opcao === 'mesas_jogadas') {
                 await this.handleExibirMesas(interaction, channelInfo.characterRow);
+            } else if (opcao === 'p2p_history') {
+                await this.handleExibirP2P(interaction, channelInfo.characterRow);
             }
 
         } catch (error) {
@@ -311,6 +314,66 @@ module.exports = {
         // 4. Envia as respostas
         await interaction.editReply({ embeds: [embedsToSend[0]] });
 
+        for (let i = 1; i < embedsToSend.length; i++) {
+            await interaction.followUp({ embeds: [embedsToSend[i]], ephemeral: true });
+        }
+    },
+
+    /**
+     * (NOVO) Lógica específica para a opção 'p2p_history'
+     * @param {import('discord.js').Interaction} interaction
+     * @param {import('google-spreadsheet').GoogleSpreadsheetRow} characterRow
+     */
+    async handleExibirP2P(interaction, characterRow) {
+        const charName = characterRow.get('PERSONAGEM');
+
+        // 1. Busca os dados usando o novo utilitário
+        const history = await fetchP2PHistory(charName);
+
+        if (!history || history.length === 0) {
+            await interaction.editReply({ content: `Nenhum histórico de transações P2P (entre jogadores) encontrado para **${charName}**.` });
+            return;
+        }
+
+        // 2. Formata as linhas
+        const allLines = history.map(entry => {
+            const data = entry.data || '??/??/????';
+            const valor = entry.valor || '0';
+            const itens = entry.itens || 'N/A';
+
+            let line = `**${data} - `;
+            if (entry.role === 'seller') {
+                line += `Venda para ${entry.otherChar} (Tag: ${entry.otherTag})`;
+            } else {
+                line += `Compra de ${entry.otherChar} (Tag: ${entry.otherTag})`;
+            }
+            
+            line += `** (Total: ${valor} PO)\n\`\`\`Itens: ${itens}\`\`\``;
+            return line;
+        });
+
+        // 3. Paginar e enviar os Embeds
+        const embedsToSend = [];
+        const embedTitle = `Histórico P2P para ${charName}`;
+        let currentDescription = '';
+
+        for (const line of allLines) {
+            const lineWithNewline = line + '\n\n';
+            if (currentDescription.length + lineWithNewline.length > 2000) {
+                embedsToSend.push(
+                    new EmbedBuilder().setTitle(embedTitle).setColor(0x2ECC71).setDescription(currentDescription) // Verde
+                );
+                currentDescription = lineWithNewline;
+            } else {
+                currentDescription += lineWithNewline;
+            }
+        }
+        embedsToSend.push(
+            new EmbedBuilder().setTitle(embedTitle).setColor(0x2ECC71).setDescription(currentDescription)
+        );
+
+        // 4. Envia as respostas
+        await interaction.editReply({ embeds: [embedsToSend[0]] });
         for (let i = 1; i < embedsToSend.length; i++) {
             await interaction.followUp({ embeds: [embedsToSend[i]], ephemeral: true });
         }

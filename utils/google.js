@@ -13,6 +13,8 @@ const INVENTARIO_SHEET_ID =
     "1j819p3VCgRpUz3rNX0lg24M5bS9jNKG-mXQ3usxLGfo";
 const COMPRAS_VENDAS_ID = process.env.COMPRAS_VENDAS_ID;
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 let credenciais;
 try {
     credenciais = require("../credentials.json");
@@ -35,6 +37,44 @@ const docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
 const docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
 const docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
 
+// +++ INÍCIO DA CORREÇÃO (BUG 3): Fila Global de Salvamento +++
+const saveQueue = [];
+let isSaving = false;
+
+/**
+ * Processa a fila de 'saves' para evitar o erro 429 (write).
+ */
+async function processSaveQueue() {
+    if (isSaving) return; // Já está a processar
+    if (saveQueue.length === 0) return; // Fila vazia
+
+    isSaving = true;
+    const { row, resolve, reject } = saveQueue.shift(); // Pega o próximo
+
+    try {
+        await row.save();
+        await delay(1100); // Delay global de 1.1s após cada escrita
+        resolve();
+    } catch (e) {
+        console.error(`[ERRO Fila de Save] Falha ao salvar linha ${row.rowIndex} da aba ${row._worksheet.title}:`, e.message);
+        reject(e);
+    }
+
+    isSaving = false;
+    processSaveQueue(); // Chama o próximo item
+}
+
+/**
+ * Adiciona uma 'row' à fila de salvamento e espera a sua conclusão.
+ * Substitui todas as chamadas `await row.save()`.
+ */
+async function saveRow(row) {
+    return new Promise((resolve, reject) => {
+        saveQueue.push({ row, resolve, reject });
+        processSaveQueue();
+    });
+}
+// +++ FIM DA CORREÇÃO (BUG 3) +++
 
 // --- 3. Lógica Principal do Sorteio (Refatorada) ---
 // (Esta função ainda usa 'Primários'/'Secundários' como no seu ficheiro)
@@ -790,5 +830,6 @@ module.exports = {
   getPlayerTokenCountFromData,
   getValuesFromSheet,
   setValuesInSheet,
-  clearValuesInSheet
+  clearValuesInSheet,
+  saveRow
 };

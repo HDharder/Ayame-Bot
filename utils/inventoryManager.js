@@ -1,5 +1,5 @@
 // utils/inventoryManager.js
-const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet } = require('./google.js');
+const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet, saveRow } = require('./google.js');
 const itemUtils = require('./itemUtils.js');
 const { buildInventoryEmbed } = require('./inventarioUtils.js');
 const { preloadInventoryEmbedData } = require('./google.js');
@@ -126,9 +126,9 @@ async function batchUpdateInventories(allPlayerChanges, client) {
             console.log(`[INFO BatchUpdate] Salvando ${rowsToSave.length} linhas de inventário atualizadas...`);
              for (const rowToSave of rowsToSave) {
                   try {
-                      await rowToSave.save(); 
+                      await saveRow(rowToSave);
                       console.log(`[INFO BatchUpdate] Linha para ${rowToSave.get('JOGADOR')} - ${rowToSave.get('PERSONAGEM')} salva.`);
-                      await delay(1000); 
+                      // await delay(1000); 
                   } catch (saveError) {
                        console.error(`[ERRO BatchUpdate] Falha ao salvar linha para ${rowToSave.get('JOGADOR')} - ${rowToSave.get('PERSONAGEM')}:`, saveError);
                        sheetUpdateSuccess = false; 
@@ -300,9 +300,9 @@ async function batchRemoveInventories(allPlayerChanges, client) {
             console.log(`[INFO BatchRemove] Salvando ${rowsToSave.length} linhas de inventário (remoção)...`);
              for (const rowToSave of rowsToSave) {
                   try {
-                      await rowToSave.save(); 
+                      await saveRow(rowToSave);
                       console.log(`[INFO BatchRemove] Linha para ${rowToSave.get('JOGADOR')} - ${rowToSave.get('PERSONAGEM')} salva.`);
-                      await delay(1000); // Delay de 1 segundo entre CADA save
+                      // await delay(1000); // Delay de 1 segundo entre CADA save
                   } catch (saveError) {
                        console.error(`[ERRO BatchRemove] Falha ao salvar linha para ${rowToSave.get('JOGADOR')} - ${rowToSave.get('PERSONAGEM')}:`, saveError);
                        sheetUpdateSuccess = false; // Marca falha, mas continua

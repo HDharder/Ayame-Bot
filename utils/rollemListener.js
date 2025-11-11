@@ -162,7 +162,7 @@ async function checkRollBrecha(client, userId, channelId) {
     // Chave é "id_chat-tag_player_lower"
     const key = `${channelId}-${userId}`;
     // Retorna a brecha se ela existir na RAM
-    return client.pendingRolls.get(key);
+    return client.pendingRolls.get(key)?.data;
 }
 
 /**

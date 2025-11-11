@@ -1,5 +1,5 @@
 // utils/exibirUtils.js
-const { docControle } = require('./google.js'); //
+const { docControle, docSorteio, docComprasVendas } = require('./google.js'); //
 const { TIER_DATA } = require('./lootLogic.js'); //
 
 /**
@@ -175,6 +175,102 @@ async function fetchMesasJogadas(characterName) {
     return history; // Retorna a lista de mesas
 }
 
+/**
+ * (NOVO) Busca em todas as planilhas P2P as transações de um personagem.
+ * @param {string} characterName - O nome exato do personagem.
+ * @returns {Promise<Array<object>>} - Um array de objetos de transação.
+ */
+async function fetchP2PHistory(characterName) {
+    const charNameLower = characterName.toLowerCase();
+    const history = [];
+
+    try {
+        // --- 1. Encontrar quais abas são P2P ---
+        await docSorteio.loadInfo();
+        const sheetPlayerID = docSorteio.sheetsByTitle['Player ID'];
+        if (!sheetPlayerID) throw new Error("Aba 'Player ID' não encontrada.");
+        
+        await sheetPlayerID.loadHeaderRow(1);
+        const playerIDRows = await sheetPlayerID.getRows();
+        
+        const p2pSheetNames = new Set(); // Usa um Set para evitar nomes duplicados
+
+        for (const row of playerIDRows) {
+            const tipoDeLoja = row.get('tipo de loja') || '';
+            if (tipoDeLoja.includes('[Players]')) {
+                // Extrai o nome da aba (lógica do transacaoUtils)
+                let sheetName = tipoDeLoja;
+                const subLojaMatch = tipoDeLoja.match(/^([^(]+)\s*\(([^)]+)\)/);
+                if (subLojaMatch) {
+                    sheetName = subLojaMatch[1].trim(); // Pega "Mercado P2P" de "Mercado P2P (Canal)"
+                }
+                const specialCharMatch = sheetName.match(/[\*\[\{]/);
+                if (specialCharMatch) {
+                    sheetName = sheetName.substring(0, specialCharMatch.index).trim();
+                }
+                p2pSheetNames.add(sheetName);
+            }
+        }
+
+        if (p2pSheetNames.size === 0) {
+            console.log("[fetchP2PHistory] Nenhuma planilha P2P ([Players]) encontrada em 'Player ID'.");
+            return [];
+        }
+
+        // --- 2. Buscar em cada aba P2P encontrada ---
+        await docComprasVendas.loadInfo();
+
+        for (const sheetName of p2pSheetNames) {
+            const sheet = docComprasVendas.sheetsByTitle[sheetName];
+            if (!sheet) {
+                console.warn(`[fetchP2PHistory] Aba P2P "${sheetName}" definida em 'Player ID' não foi encontrada em COMPRAS_VENDAS.`);
+                continue;
+            }
+            
+            await sheet.loadHeaderRow(1);
+            const rows = await sheet.getRows();
+
+            for (const row of rows) {
+                const sellerChar = row.get('personagem vendedor');
+                const buyerChar = row.get('persongem Comprador'); // Note o "persongem"
+
+                let entry = null;
+
+                // Verifica se o personagem foi o Vendedor
+                if (sellerChar && sellerChar.toLowerCase() === charNameLower) {
+                    entry = {
+                        role: 'seller',
+                        otherTag: row.get('tag Comprador'),
+                        otherChar: row.get('persongem Comprador')
+                    };
+                } 
+                // Verifica se o personagem foi o Comprador
+                else if (buyerChar && buyerChar.toLowerCase() === charNameLower) {
+                    entry = {
+                        role: 'buyer',
+                        otherTag: row.get('tag Vendedor'),
+                        otherChar: row.get('personagem vendedor')
+                    };
+                }
+
+                // Se encontrou, adiciona ao histórico
+                if (entry) {
+                    entry.data = row.get('Data'); // Busca a coluna 'Data'
+                    entry.valor = row.get('valor');
+                    entry.itens = row.get('itens');
+                    history.push(entry);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[ERRO fetchP2PHistory]:", e);
+    }
+
+    // (Opcional: Ordenar por data, se a data estiver sendo salva corretamente)
+    return history;
+}
+
 module.exports = {
-    fetchMesasJogadas
+    fetchMesasJogadas,
+    fetchP2PHistory
 };

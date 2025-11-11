@@ -1,5 +1,5 @@
 // utils/transacaoUtils.js
-const { docSorteio, docControle, docComprasVendas, docInventario, docCraft, getValuesFromSheet } = require('./google.js');
+const { docSorteio, docControle, docComprasVendas, docInventario, docCraft, getValuesFromSheet, lookupIds, saveRow } = require('./google.js'); // +++ Importa saveRow
 const { findUserCharacters, buildInventoryEmbed } = require('./inventarioUtils.js'); //
 const { batchUpdateInventories, batchRemoveInventories } = require('./inventoryManager.js'); //
 const { parseInventoryString, getItemCategory } = require('./itemUtils.js'); //
@@ -533,8 +533,8 @@ async function processCompra(interaction, state) {
         console.log(`[INFO processCompra] Atualizando estoque para ${shopRowsToSave.length} itens...`);
         try {
             for (const rowToSave of shopRowsToSave) {
-                await rowToSave.save();
-                await delay(1000); // Delay para não sobrecarregar a API
+                await saveRow(rowToSave); // +++ CORREÇÃO (BUG 3): Usa a fila
+                // await delay(1000); // Delay para não sobrecarregar a API
             }
         } catch (stockError) {
             console.error("[ERRO processCompra] Falha ao salvar novo estoque:", stockError);
@@ -577,7 +577,7 @@ const categoryToInventoryColumnMap = {
     'misc': 'Misc',
     // Mapeamentos de conveniência
     'itens': 'Itens Mágicos',
-    'poções': 'Consumíveis Mágicos'
+    'poção': 'Consumíveis Mágicos'
 };
 
 // Mapeia as categorias para as planilhas e colunas de preço na Tabela de Craft
@@ -585,11 +585,10 @@ const categoryToCraftPriceMap = {
     'itens mundanos': { sheet: 'Itens Mundanos', nameCol: 'Name', priceCol: 'Valor' },
     'materiais': { sheet: 'Materiais', nameCol: 'Material', priceCol: 'Preço Base' },
     'ervas': { sheet: 'Ervas', nameCol: 'Nome da Erva', priceCol: 'Preço (PO)' },
-    'itens': { sheet: 'Itens', nameCol: 'Name', priceCol: 'Preço Venda' },
-    'poções': { sheet: 'Poções', nameCol: 'Name', priceCol: 'Preço Venda' },
+    'itens': { sheet: 'Itens', nameCol: 'Name', priceCol: 'Preço de Venda' },
     // Mapeamentos de conveniência (apontam para o mesmo lugar)
-    'itens mágicos': { sheet: 'Itens', nameCol: 'Name', priceCol: 'Preço Venda' },
-    'consumíveis mágicos': { sheet: 'Poções', nameCol: 'Name', priceCol: 'Preço Venda' }
+    'itens mágicos': { sheet: 'Itens', nameCol: 'Name', priceCol: 'Preço de Venda' },
+    'consumíveis mágicos': { sheet: 'Poção', nameCol: 'Name', priceCol: 'Preço de Venda' }
     // (Armas, Escudos, Misc... não têm preço de venda base por padrão, a menos que adicionados)
 };
 
@@ -621,21 +620,68 @@ async function cacheSellPrices(categories) {
             console.warn(`[cacheSellPrices] Aba de Craft "${sheetName}" não encontrada.`);
             continue;
         }
-        await sheet.loadHeaderRow(1);
-        
-        // Verifica se a coluna de item e preço existem
-        if (!sheet.headerValues.includes(nameCol) || !sheet.headerValues.includes(priceCol)) {
-            console.warn(`[cacheSellPrices] Aba "${sheetName}" não possui colunas '${nameCol}' ou '${priceCol}'.`);
-            continue;
-        }
+        // +++ INÍCIO DA CORREÇÃO (Evita 'Duplicate header') +++
+        // Se for uma das abas problemáticas, usa o modo manual
+        if (sheetName === 'Itens' || sheetName === 'Poção') {
+            try {
+                // 1. Carrega a Linha 1 (cabeçalho) para *encontrar* os índices
+                await sheet.loadCells('A1:Z1'); 
+                let nameColIndex = -1;
+                let priceColIndex = -1;
 
-        const rows = await sheet.getRows();
-        for (const row of rows) {
-            const itemName = row.get(nameCol);
-            const itemPrice = parseFloat(row.get(priceCol)?.replace(',', '.')) || 0;
-            if (itemName && itemPrice > 0) {
-                priceCache.set(itemName.toLowerCase(), itemPrice);
+                for (let i = 0; i < sheet.columnCount; i++) {
+                    const cell = sheet.getCell(0, i); // Linha 0 = Linha 1 da planilha
+                    if (cell.value === nameCol) nameColIndex = i;
+                    if (cell.value === priceCol) priceColIndex = i;
+                }
+
+                if (nameColIndex === -1 || priceColIndex === -1) {
+                    console.warn(`[cacheSellPrices] Aba "${sheetName}" não possui colunas '${nameCol}' ou '${priceCol}'.`);
+                    continue;
+                }
+                
+                // 2. Tira as LETRAS das colunas (ex: "A", "G") dos cabeçalhos (que JÁ carregámos)
+                const nameColLetter = sheet.getCell(0, nameColIndex).a1Address.replace(/[0-9]/g, '');
+                const priceColLetter = sheet.getCell(0, priceColIndex).a1Address.replace(/[0-9]/g, '');
+
+                // 3. Constrói os intervalos manualmente (ex: "A2:A1000", "G2:G1000")
+                const rangesToLoad = [
+                    `${nameColLetter}2:${nameColLetter}${sheet.rowCount}`,
+                    `${priceColLetter}2:${priceColLetter}${sheet.rowCount}`
+                ];
+                
+                await sheet.loadCells(rangesToLoad);
+                // 4. Itera pelas linhas manualmente
+                for (let i = 1; i < sheet.rowCount; i++) { // Começa em 1 (dados)
+                    const itemName = sheet.getCell(i, nameColIndex).value;
+                    const itemPriceRaw = sheet.getCell(i, priceColIndex).value;
+                    const itemPrice = parseFloat(String(itemPriceRaw)?.replace(',', '.')) || 0;
+                    
+                    if (itemName && itemPrice > 0) {
+                        priceCache.set(String(itemName).toLowerCase(), itemPrice);
+                    }
+                }
+            } catch (e) {
+                console.error(`[cacheSellPrices] Erro no modo manual para ${sheetName}:`, e);
             }
+        } else {
+            // --- Comportamento Antigo (para 'Materiais', 'Ervas', etc.) ---
+            await sheet.loadHeaderRow(1);
+            if (!sheet.headerValues.includes(nameCol) || !sheet.headerValues.includes(priceCol)) {
+                console.warn(`[cacheSellPrices] Aba "${sheetName}" não possui colunas '${nameCol}' ou '${priceCol}'.`);
+                continue;
+            }
+
+            // +++ ESTE É O BLOCO QUE FALTAVA +++
+            const rows = await sheet.getRows();
+            for (const row of rows) {
+                const itemName = row.get(nameCol);
+                const itemPrice = parseFloat(row.get(priceCol)?.replace(',', '.')) || 0;
+                if (itemName && itemPrice > 0) {
+                    priceCache.set(itemName.toLowerCase(), itemPrice);
+                }
+            }
+            // +++ FIM DO BLOCO QUE FALTAVA +++
         }
     }
     return priceCache;
@@ -646,9 +692,10 @@ async function cacheSellPrices(categories) {
  * Constrói o menu de Venda (Seleção de Itens do Inventário do Jogador)
  * @param {object} state - O estado da transação.
  * @param {number} page - A página a ser exibida (base 0).
+ * @param {boolean} price_adjust - Se deve mostrar "Sugestão" (P2P) em vez de "Venda".
  */
-async function buildSellSelectMenu(state, page = 0) {
-    const { interactionId, character, rules, tipoDeLojaLimpo, sellFilter, subLojaNome, persuasionSuccess } = state;
+async function buildSellSelectMenu(state, page = 0, price_adjust = false) {
+    const { interactionId, character, rules, tipoDeLojaLimpo, sellFilter, subLojaNome, persuasionSuccess, buyerInfo } = state;
     const playerRow = character.row;
 
     // --- 1. Buscar Regras de Venda e Itens da Loja ---
@@ -663,10 +710,33 @@ async function buildSellSelectMenu(state, page = 0) {
     await shopSheet.loadHeaderRow(1);
 
     // 1a. Pegar Fator de Venda (G2 ou I2)
-    const fatorCol = persuasionSuccess ? 'Fator de Venda (cd)' : 'Fator de Venda'; //
+    /*const fatorCol = persuasionSuccess ? 'Fator de Venda (cd)' : 'Fator de Venda'; //
     const priceLabel = persuasionSuccess ? 'Venda (CD)' : 'Venda';
     await shopSheet.loadCells('G2:H2'); // Carrega a célula correta
-    const fatorDeVenda = parseFloat(shopSheet.getCell(1, shopSheet.headerValues.indexOf(fatorCol)).value) || 0.5;
+    const fatorDeVenda = parseFloat(shopSheet.getCell(1, shopSheet.headerValues.indexOf(fatorCol)).value) || 0.5;*/
+
+    // +++ MUDANÇA: Define o fator e o rótulo com base no P2P +++
+    let fatorDeVenda = 0.5; // Padrão
+    let priceLabel = 'Venda';
+    // Mapa de fatores para preço sugerido P2P
+    const priceFactors = {
+        'itens mundanos': 0.5, 'armas': 0.5, 'escudos/armaduras': 0.5,
+        'itens mágicos': 0.5, 'itens': 0.5,
+        'materiais': 1.0, 'ervas': 1.0, 'consumíveis mágicos': 1.0, 'poção': 1.0,
+        'misc': 0.0
+    };
+
+    if (price_adjust) {
+        priceLabel = 'Sugestão';
+        // fatorDeVenda não é usado no modo P2P, usaremos priceFactors
+    } else {
+        // Modo Venda Loja
+        const fatorCol = persuasionSuccess ? 'Fator de Venda (cd)' : 'Fator de Venda'; //
+        priceLabel = persuasionSuccess ? 'Venda (CD)' : 'Venda';
+        await shopSheet.loadCells('G2:H2'); // Carrega a linha 2, colunas G e H
+        fatorDeVenda = parseFloat(shopSheet.getCell(1, shopSheet.headerValues.indexOf(fatorCol)).value) || 0.5;
+    }
+
 
     // 1b. Pegar itens que a loja compra (para a regra *)
     const shopBuyItems = new Set();
@@ -715,28 +785,32 @@ async function buildSellSelectMenu(state, page = 0) {
         // Precisamos determinar a categoria original do item (ex: 'poções') para checar a regra *
         const validationName = item.name.split('[')[0].trim();
         const basePrice = priceCache.get(validationName.toLowerCase()) || 0;
+        let sellPrice = 0;
 
-        // Filtro 1: O item tem um preço base? (Se não, não é vendável)
-        if (basePrice === 0) {
-            console.warn(`[BuildSellMenu] Item "${item.name}" pulado (preço base 0).`);
-            continue;
-        }
-
-        // Filtro 2: Regra da Estrela (*)
-        // Verifica se a categoria DESTE item (ex: 'poções') está na lista de categorias com *
-        if (item.category && starredCategories.has(item.category.toLowerCase())) {
-            // Se sim, verifica se a loja compra este item específico
-            if (!shopBuyItems.has(itemKey)) {
-                console.warn(`[BuildSellMenu] Item "${item.name}" pulado (Regra * e loja não compra).`);
-                continue; // É um item de categoria restrita (*), e a loja não o compra.
+        if (price_adjust) {
+            // --- Lógica P2P ---
+            const factor = priceFactors[item.category] || 0.5; // Usa o fator P2P
+            sellPrice = basePrice * factor;
+            // (Permite itens com preço 0, ex: Misc)
+        } else {
+            // --- Lógica Venda Loja ---
+            // Filtro 1: O item tem um preço base? (Se não, não é vendável)
+            if (basePrice === 0) {
+                console.warn(`[BuildSellMenu] Item "${item.name}" pulado (preço base 0).`);
+                continue;
             }
+            // Filtro 2: Regra da Estrela (*)
+            if (item.category && starredCategories.has(item.category.toLowerCase())) {
+                if (!shopBuyItems.has(itemKey)) {
+                    console.warn(`[BuildSellMenu] Item "${item.name}" pulado (Regra * e loja não compra).`);
+                    continue;
+                }
+            }
+            sellPrice = basePrice * fatorDeVenda;
         }
-        
-        // 3c. O item é vendável. Calcula o preço final
-        const sellPrice = basePrice * fatorDeVenda;
         
         // 3d. Expande o item em unidades (como no /loot)
-        if (sellPrice <= 0) continue; // Não exibe itens que a loja não compra
+        if (sellPrice <= 0 && !price_adjust) continue; // Não exibe itens que a loja não compra (a menos que seja P2P)
 
         for (let i = 0; i < item.amount; i++) {
             allItemUnits.push({ 
@@ -760,7 +834,7 @@ async function buildSellSelectMenu(state, page = 0) {
     // Move o botão de finalizar para cima
     const finalizeButton = new ButtonBuilder()
         .setCustomId(`transacao_venda_finalizar|${interactionId}`)
-        .setLabel('Finalizar Venda')
+        .setLabel(price_adjust ? 'Definir Preço' : 'Finalizar Venda') // Label dinâmico
         .setStyle(ButtonStyle.Success);
 
     const selectMenu = new StringSelectMenuBuilder()
@@ -826,7 +900,10 @@ async function buildSellSelectMenu(state, page = 0) {
     const filterButton = buildFilterButton(`transacao_filtro_venda|${interactionId}`, safePage); //
 
     const filterText = keywords.length > 0 ? `\n**Filtro Ativo:** \`${formatFilterToString(keywords)}\`` : '';
-    const content = `Selecione os itens do seu inventário que deseja vender.\n` +
+    // +++ MUDANÇA: Título dinâmico +++
+    const content = price_adjust 
+        ? `**Transação P2P com ${buyerInfo.characterRow.get('PERSONAGEM')}**\nSelecione os itens do *seu* inventário (${character.row.get('PERSONAGEM')}) que deseja vender.\n`
+        : `Selecione os itens do seu inventário que deseja vender.\n` +
                     `**Exibindo Página ${safePage + 1} de ${totalPages}** (${allItemUnits.length} itens encontrados)` +
                     filterText;
 
@@ -965,9 +1042,17 @@ async function closeRollBrecha(client, channelId, username) {
  */
 async function openRollBrecha(interaction, state, shopMessageId) {
     const client = interaction.client;
-    if (!client.pendingRolls) client.pendingRolls = new Map();
+    //if (!client.pendingRolls) client.pendingRolls = new Map();
 
     const key = `${interaction.channel.id}-${state.character.row.get('JOGADOR').trim().toLowerCase()}`;
+
+    // +++ INÍCIO DA CORREÇÃO (BUG 5) +++
+    if (!client.pendingRolls) client.pendingRolls = new Map();
+    if (client.pendingRolls.has(key)) {
+        console.warn(`[AVISO openRollBrecha] O jogador ${key} já tem uma brecha de rolagem aberta. A nova brecha foi ignorada.`);
+        return; // Não abre uma segunda brecha
+    }
+    // +++ FIM DA CORREÇÃO (BUG 5) +++
 
     // 1. Busca os "Termos" na planilha da loja
     let termos = [];
@@ -993,15 +1078,17 @@ async function openRollBrecha(interaction, state, shopMessageId) {
     }
 
     // 2. Salva a brecha na RAM
-    client.pendingRolls.set(key, {
-        cd: state.persuasionCD,
-        rollType: 'd20',
-        requiredText: termos.length > 0 ? termos : [], //
-        interactionId: state.interactionId,
-        channelId: interaction.channel.id, // <<< ADICIONADO: O canal onde a loja está
-        shopMessageId: shopMessageId, // <<< ADICIONADO: O ID da mensagem da loja
-        sourceCommand: 'transacao' // Para o listener saber o que chamar
-    });
+    // +++ CORREÇÃO (BUG 2): Adiciona o wrapper de timestamp +++
+    const data = {
+            cd: state.persuasionCD,
+            rollType: 'd20',
+            requiredText: termos.length > 0 ? termos : [], //
+            interactionId: state.interactionId,
+            channelId: interaction.channel.id, // O canal onde a loja está
+            shopMessageId: shopMessageId, // O ID da mensagem da loja
+            sourceCommand: 'transacao' // Para o listener saber o que chamar
+    };
+    client.pendingRolls.set(key, { data: data, timestamp: Date.now() });
 
     console.log(`[openRollBrecha] Brecha aberta para ${key} (CD: ${state.persuasionCD}, Termos: ${termos.join(', ')})`);
 }
@@ -1046,6 +1133,154 @@ async function handlePersuasionResult(client, brecha, rollSuccess) {
     }
 }
 // +++ FIM: NOVAS FUNÇÕES DE PERSUASÃO +++
+
+// +++ INÍCIO: NOVAS FUNÇÕES P2P (Sim/Não) +++
+
+/**
+ * (NOVO - P2P) Publica a mensagem de confirmação Sim/Não.
+ * @param {import('discord.js').ModalSubmitInteraction} modalInteraction - A interação do modal de preço.
+ * @param {object} state - O estado da transação.
+ */
+async function postP2PConfirmation(modalInteraction, state) {
+    const { character, buyerInfo, itemsToSell, proposedPrice, tipoDeLojaLimpo } = state;
+    const client = modalInteraction.client;
+
+    // 1. Agrega os itens selecionados (para o state)
+    const aggregatedItems = new Map();
+    for (const item of itemsToSell) {
+        const key = item.name;
+        const validationName = item.name.split('[')[0].trim();
+        const current = aggregatedItems.get(key) || { name: item.name, validationName: validationName, amount: 0 };
+        current.amount += 1;
+        aggregatedItems.set(key, current);
+    }
+    const itemsToTransfer = Array.from(aggregatedItems.values());
+
+    // 2. Busca IDs do Vendedor e Comprador
+    const seller = {
+        id: state.ownerId,
+        username: character.row.get('JOGADOR'),
+        charRow: character.row
+    };
+    const buyerIds = await lookupIds([buyerInfo.owner]);
+    const buyer = {
+        id: buyerIds.length > 0 ? buyerIds[0] : null,
+        username: buyerInfo.owner, // <<< CORREÇÃO 1
+        charRow: buyerInfo.characterRow // <<< CORREÇÃO 2
+    };
+
+    // 3. Formata a lista de itens para a mensagem
+    const itemList = itemsToTransfer.map(item => `- ${item.amount}x ${item.name}`).join('\n');
+
+    // 4. Cria o estado PENDENTE
+    const p2p_state = {
+        seller: seller,
+        buyer: buyer,
+        items: itemsToTransfer,
+        price: proposedPrice,
+        logSheetName: tipoDeLojaLimpo,
+        data: getFormattedTimestamp()
+    };
+
+    // 5. Envia a mensagem de confirmação
+    const msgContent = `${userMention(seller.id)} (personagem: **${seller.charRow.get('PERSONAGEM')}**) quer vender para ${userMention(buyer.id)} (personagem: **${buyer.charRow.get('PERSONAGEM')}**):\n\n` +
+                     `**Itens Ofertados:**\n${itemList}\n\n` +
+                     `**Preço Total:** ${proposedPrice.toFixed(2)} PO\n\n` +
+                     `*${userMention(buyer.id)}, você aceita esta transação?*`;
+
+    // Envia a mensagem pública
+    const proposalMessage = await modalInteraction.channel.send({ 
+        content: msgContent,
+        allowedMentions: { users: [seller.id, buyer.id] } 
+    });
+    const messageId = proposalMessage.id;
+
+    // 6. Adiciona botões Sim/Não
+    const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`p2p_trade_accept|${messageId}`).setLabel('Sim, Aceitar').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`p2p_trade_decline|${messageId}`).setLabel('Não, Recusar').setStyle(ButtonStyle.Danger)
+    );
+    await proposalMessage.edit({ components: [buttons] });
+
+    // 7. Salva o estado P2P na RAM
+    if (!client.pendingP2PTrades) client.pendingP2PTrades = new Map();
+    // +++ CORREÇÃO (BUG 2): Adiciona o wrapper de timestamp +++
+    client.pendingP2PTrades.set(messageId, { data: p2p_state, timestamp: Date.now() });
+}
+
+/**
+ * (NOVO - P2P) Processa o clique em "Sim, Aceitar".
+ * @param {import('discord.js').ButtonInteraction} buttonInteraction - A interação do botão.
+ * @param {object} p2p_state - O estado P2P salvo na RAM.
+ */
+async function handleP2PConfirmation(buttonInteraction, p2p_state) {
+    //await buttonInteraction.deferUpdate();
+    const { seller, buyer, items, price, logSheetName, data } = p2p_state;
+    const client = buttonInteraction.client;
+
+    // +++ INÍCIO DA CORREÇÃO (BUG 1) +++
+    // 1. Verifica se o comprador tem o ouro
+    const buyerCurrentGold = parseFloat(buyer.charRow.get('Total')) || 0;
+    if (buyerCurrentGold < price) {
+        // O comprador não tem dinheiro. Aborta a transação.
+        return buttonInteraction.message.content + `\n\n**FALHA NA TRANSAÇÃO**\nO comprador (${buyer.charRow.get('PERSONAGEM')}) não possui ouro suficiente (Possui: ${buyerCurrentGold.toFixed(2)} PO / Custo: ${price.toFixed(2)} PO).`;
+    }
+    // +++ FIM DA CORREÇÃO (BUG 1) +++
+
+    // (Validação de inventário (se o vendedor ainda tem os itens / comprador tem o ouro) pode ser adicionada aqui)
+    // (Por enquanto, confiamos no /gasto)
+
+    // 1. Prepara os Payloads (Invertido do /gasto)
+    const sellerPayload_RemoveItems = { username: seller.username, characterName: seller.charRow.get('PERSONAGEM'), changes: { itemsToRemove: items } };
+    const sellerPayload_AddGold = { username: seller.username, characterName: seller.charRow.get('PERSONAGEM'), changes: { gold: price } };
+    
+    const buyerPayload_RemoveGold = { username: buyer.username, characterName: buyer.charRow.get('PERSONAGEM'), changes: { gold: price } };
+    const buyerPayload_AddItems = { username: buyer.username, characterName: buyer.charRow.get('PERSONAGEM'), changes: { itemsToAdd: items } };
+
+    // 2. Executa as transações em lote
+    // (Fazemos em duas etapas para segurança)
+    const removeSuccess = await batchRemoveInventories([sellerPayload_RemoveItems, buyerPayload_RemoveGold], client);
+    const addSuccess = await batchUpdateInventories([buyerPayload_AddItems, sellerPayload_AddGold], client);
+
+    // 3. Edita a mensagem final
+    if (removeSuccess && addSuccess) {
+        // +++ REQUERIMENTO 2 e 3: Formato da mensagem final e Log +++
+        const itemsString = items.map(item => `${item.amount}x ${item.name}`).join(', ');
+        const finalMessage = `Transação entre **${seller.charRow.get('PERSONAGEM')}** e **${buyer.charRow.get('PERSONAGEM')}** concluída.\n` +
+                             `**${seller.charRow.get('PERSONAGEM')}** recebeu: ${price.toFixed(2)} PO\n` +
+                             `**${buyer.charRow.get('PERSONAGEM')}** recebeu: ${itemsString}`;
+
+        // +++ REQUERIMENTO 3: Logar na planilha +++
+        try {
+            await docComprasVendas.loadInfo();
+            const logSheet = docComprasVendas.sheetsByTitle[logSheetName];
+            if (logSheet) {
+                await logSheet.addRow({
+                    'Data': data,
+                    'tag Vendedor': seller.username,
+                    'personagem vendedor': seller.charRow.get('PERSONAGEM'),
+                    'tag Comprador': buyer.username,
+                    'persongem Comprador': buyer.charRow.get('PERSONAGEM'), // Corresponde ao seu cabeçalho "persongem"
+                    'valor': price.toFixed(2).replace('.', ','),
+                    'itens': itemsString
+                });
+            } else {
+                console.error(`[ERRO P2P Log] A aba de log P2P "${logSheetName}" não foi encontrada na planilha COMPRAS_VENDAS.`);
+            }
+        } catch (logError) {
+            console.error(`[ERRO P2P Log] Falha ao salvar o log P2P na aba "${logSheetName}":`, logError);
+        }
+
+        // Retorna a mensagem de sucesso
+        return finalMessage;
+
+    } else {
+        // Retorna a mensagem de falha
+        return buttonInteraction.message.content + `\n\n**FALHA NA TRANSAÇÃO**\nOcorreu um erro ao atualizar os inventários na planilha. A transação foi abortada. (Verifique se o comprador tinha ouro suficiente ou se o vendedor ainda tinha os itens).`;
+    }
+}
+
+// +++ FIM: NOVAS FUNÇÕES P2P +++
  
 
 module.exports = {
@@ -1057,6 +1292,8 @@ module.exports = {
     processCompra,
     buildSellSelectMenu,
     processVenda,
+    postP2PConfirmation,
+    handleP2PConfirmation,
     openRollBrecha,
     handlePersuasionResult,
     closeRollBrecha

@@ -11,7 +11,7 @@ const {
     TextInputBuilder,             // <<< ADICIONADO
     TextInputStyle
 } = require('discord.js');
-const { findUserCharacters } = require('../utils/inventarioUtils.js'); //
+const { findUserCharacters, getChannelOwner } = require('../utils/inventarioUtils.js'); //
 const {
     validateMarketChannel,
     validateMesaCheck,
@@ -21,7 +21,9 @@ const {
     processCompra,
     buildSellSelectMenu, // <<< IMPORTA A NOVA FUNÇÃO
     processVenda,
-    openRollBrecha
+    openRollBrecha,
+    postP2PConfirmation, // + NOVO
+    handleP2PConfirmation //
 } = require('../utils/transacaoUtils.js'); //
 const { buildDynamicQuantityModal, MAX_MODAL_ITEMS } = require('../utils/modalUtils.js'); //
 const { handleFilterButton, handleFilterModal } = require('../utils/filterManager.js'); //
@@ -44,7 +46,9 @@ module.exports = {
         'transacao_venda_finalizar', // <<< NOVO (Venda)
         'transacao_filtro_compra',   // <<< NOVO (Filtro)
         'transacao_filtro_venda',
-        'transacao_cancelar_modal'// <<< NOVO (Cancelar)
+        'transacao_cancelar_modal', // <<< NOVO (Cancelar)
+        'p2p_trade_accept', // + NOVO (P2P)
+        'p2p_trade_decline' // + NOVO (P2P)
     ],
     selects: [
         'transacao_char_select', 
@@ -55,7 +59,8 @@ module.exports = {
         'transacao_compra_modal',
         'transacao_filtro_compra_modal', // <<< NOVO (Filtro)
         'transacao_filtro_venda_modal',
-        'transacao_cancelar_confirm'     // <<< NOVO (Cancelar)
+        'transacao_cancelar_confirm',     // <<< NOVO (Cancelar)
+        'transacao_venda_modal' // + NOVO (P2P Modal de Preço)
     ],
 
     async execute(interaction) {
@@ -88,6 +93,7 @@ module.exports = {
         const hasMesaCheck = tipoDeLoja.includes('*');
         const hasEstoque = tipoDeLoja.includes('[Estoque]');
         const isCaravana = tipoDeLoja.includes('[Caravana]');
+        const price_adjust = tipoDeLoja.includes('[Players]');
         
         // Extrai o CD de Persuasão
         const persuasionMatch = tipoDeLoja.match(/\{(\d+)\}/);
@@ -119,8 +125,26 @@ module.exports = {
             shopMessageId: null,
             itemsToSell: [], // Para o fluxo de Venda
             shopFilter: [], // <<< NOVO (Filtro)
-            sellFilter: []  // <<< NOVO (Filtro)
+            sellFilter: [],  // <<< NOVO (Filtro)
+            price_adjust: price_adjust, // + NOVO (P2P)
+            buyerInfo: null // + NOVO (P2P)
         };
+
+        // +++ NOVO: Se for P2P, busca o dono do canal (Comprador) +++
+        if (price_adjust) {
+            const buyerInfo = await getChannelOwner(interaction.channel.id);
+            if (!buyerInfo || !buyerInfo.owner || !buyerInfo.characterRow) {
+                await interaction.editReply({ content: 'Este canal de [Players] não parece estar vinculado a um inventário válido. Não consigo identificar o comprador.', components: [] });
+                return;
+            }
+            // Verifica se o jogador está tentando transacionar consigo mesmo
+            if (buyerInfo.owner.trim().toLowerCase() === interaction.user.username.trim().toLowerCase()) {
+                 await interaction.editReply({ content: 'Você não pode iniciar uma transação no seu próprio canal de inventário. Use `/gasto` para gerir seus itens.', components: [] });
+                return;
+            }
+            state.buyerInfo = buyerInfo; // Salva os dados do comprador
+        }
+
         // Armazena o estado (usaremos o 'pendingLoots' genérico)
         interaction.client.pendingLoots.set(interaction.id, state);
 
@@ -140,6 +164,15 @@ module.exports = {
             return;
         }
         state.characters = characters; // <<< SALVA OS PERSONAGENS NO STATE
+
+        // +++ NOVO: Verifica se o Vendedor e o Comprador são da mesma conta +++
+        if (state.price_adjust && state.buyerInfo) {
+            const sellerUsername = characters[0].get('JOGADOR'); // Pega o nome do Jogador (dono dos personagens)
+            if (sellerUsername.trim().toLowerCase() === state.buyerInfo.characterRow.get('JOGADOR').trim().toLowerCase()) {
+                await interaction.editReply({ content: 'Erro: Você não pode realizar transações entre personagens da mesma conta.', components: [] });
+                return;
+            }
+        }
 
         if (characters.length > 1) {
             // Mais de 1 personagem, precisa escolher
@@ -161,6 +194,7 @@ module.exports = {
                 content: 'Com qual personagem você deseja realizar esta transação?',
                 components: [new ActionRowBuilder().addComponents(selectMenu)],
                 //flags: [MessageFlagsBitField.Flags.Ephemeral] // A seleção de personagem é efêmera
+                ephemeral: false // Define como público
             });
             // O fluxo continua no handleSelect
             
@@ -200,17 +234,17 @@ module.exports = {
             state.activeMenu = 'compra'; // <<< GUARDA O MENU ATIVO
             // +++ MUDANÇA: Chama a nova função de paginação, começando na página 0 +++
             const { content, components } = await buildPaginatedShopMenu(state, 0); //
-            const shopMessage = await interaction.editReply({ content: content, components: components, flags: [] });
+            const shopMessage = await interaction.editReply({ content: content, components: components, ephemeral: false });
             state.shopMessageId = shopMessage.id; // <<< ATUALIZAÇÃO: Salva o ID da mensagem        
         } else if (possibilidades === 'venda') {
             state.activeMenu = 'venda'; // <<< GUARDA O MENU ATIVO
-            const { content, components } = await buildSellSelectMenu(state, 0); // <<< CHAMA A NOVA FUNÇÃO
-            const shopMessage = await interaction.editReply({ content: content, components: components, flags: [] });
+            const { content, components } = await buildSellSelectMenu(state, 0, state.price_adjust);
+            const shopMessage = await interaction.editReply({ content: content, components: components, ephemeral: false });
             state.shopMessageId = shopMessage.id; // <<< ATUALIZAÇÃO: Salva o ID da mensagem
         } else if (possibilidades === 'compra e venda') {
             const buttons = new ActionRowBuilder()
                 .addComponents(
-                    new ButtonBuilder().setCustomId(`transacao_compra|${state.interactionId}`).setLabel('Comprar').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`transacao_compra|${state.interactionId}`).setLabel('Comprar').setStyle(ButtonStyle.Success).setDisabled(state.price_adjust), // Desabilita compra em P2P
                     new ButtonBuilder().setCustomId(`transacao_venda|${state.interactionId}`).setLabel('Vender').setStyle(ButtonStyle.Primary)
                 );
             await interaction.editReply({
@@ -243,7 +277,8 @@ module.exports = {
 
         // --- SELEÇÃO DE PERSONAGEM ---
         if (action === 'transacao_char_select') {
-            await interaction.deferUpdate(); // Remove a seleção de personagem (que era efêmera)
+            // Edita a mensagem PÚBLICA de seleção de char para "A carregar..."
+            await interaction.update({ content: 'Carregando personagem...', components: [] });
             
             // +++ CORREÇÃO: Busca o personagem do state usando o índice do array +++
             const selectedIndex = parseInt(interaction.values[0]); // "0", "1", etc.
@@ -265,6 +300,14 @@ module.exports = {
                         ephemeral: true 
                     });
                     interaction.client.pendingLoots.delete(interaction.id);
+                    return;
+                }
+            }
+
+            // +++ NOVO: Verifica P2P (Mesma Conta) após seleção de char +++
+            if (state.price_adjust && state.buyerInfo) {
+                if (state.character.row.get('JOGADOR').trim().toLowerCase() === state.buyerInfo.characterRow.get('JOGADOR').trim().toLowerCase()) {
+                    await interaction.editReply({ content: 'Erro: Você não pode realizar transações entre personagens da mesma conta.', components: [] });
                     return;
                 }
             }
@@ -339,9 +382,56 @@ module.exports = {
 
         // +++ ADICIONADO: Verificação de Dono para botões +++
         // +++ CORREÇÃO: Compara com o 'ownerId' salvo no state +++
-        if (!state || interaction.user.id !== state.ownerId) {
+        /*if (!state || interaction.user.id !== state.ownerId) {
             await interaction.reply({ content: 'Esta interação expirou ou não pertence a você.', ephemeral: true });
-            return;
+            return;*/
+        // +++ INÍCIO DA REESTRUTURAÇÃO +++
+        // 1. Verifica primeiro os botões P2P, que têm uma lógica de permissão diferente
+        if (action === 'p2p_trade_accept' || action === 'p2p_trade_decline') {
+            
+            // Este state é DIFERENTE. É o state da *proposta pendente*.
+            // Usamos interaction.message.id porque o 'interactionId' do customId é o ID da mensagem
+            const p2p_state_wrapper = interaction.client.pendingP2PTrades.get(interactionId);
+            const p2p_state = p2p_state_wrapper?.data;
+
+            if (!p2p_state) {
+                await interaction.reply({ content: 'Esta proposta de transação expirou.', ephemeral: true });
+                await interaction.message.edit({ content: interaction.message.content + "\n\n**PROPOSTA EXPIRADA**", components: [] }).catch(()=>{});
+                return;
+            }
+
+            // Verifica se quem clicou é o COMPRADOR
+            if (interaction.user.id !== p2p_state.buyer.id) {
+                await interaction.reply({ content: 'Apenas o comprador pode aceitar ou recusar esta proposta.', ephemeral: true });
+                return;
+            }
+
+            // Remove o state pendente
+            interaction.client.pendingP2PTrades.delete(interaction.message.id);
+
+            // (Importa o utils aqui dentro para evitar dependência circular)
+            const { handleP2PConfirmation } = require('../utils/transacaoUtils.js');
+
+            if (action === 'p2p_trade_decline') {
+                await interaction.deferUpdate();
+                await interaction.editReply({ 
+                    content: interaction.message.content + `\n\n**PROPOSTA RECUSADA** por ${interaction.user}.`, 
+                    components: [] 
+                });
+            } else {
+                // (action === 'p2p_trade_accept')
+                // Responde à interação PRIMEIRO
+                await interaction.update({ 
+                    content: interaction.message.content + "\n\n**PROCESSANDO TRANSAÇÃO...** ⏳", 
+                    components: [] 
+                });
+                // Chama a lógica pesada de verificação e transferência
+                // A função agora retorna a mensagem de resultado
+                const resultMessage = await handleP2PConfirmation(interaction, p2p_state);
+                // Edita a mensagem UMA ÚLTIMA vez com o resultado final
+                await interaction.editReply({ content: resultMessage, components: [] });
+            }
+            return; // << FIM DA LÓGICA P2P
         }
 
         // --- Botão 'Comprar' (após 'compra e venda') ---
@@ -370,7 +460,7 @@ module.exports = {
             await interaction.update({ content: 'Carregando seu inventário para venda... ⏳', components: [] });
             state.shopMessageId = interaction.message.id;
 
-            const { content, components } = await buildSellSelectMenu(state, 0); // <<< CHAMA A NOVA FUNÇÃO
+            const { content, components } = await buildSellSelectMenu(state, 0, state.price_adjust);
             await interaction.editReply({ content: content, components: components });
 
             // +++ CORREÇÃO: Abre a brecha AGORA +++
@@ -417,7 +507,7 @@ module.exports = {
             const newPage = (action === 'transacao_venda_next') ? page + 1 : page - 1;
 
             // Reconstrói o menu de venda na nova página
-            const { content, components } = await buildSellSelectMenu(state, newPage); //
+            const { content, components } = await buildSellSelectMenu(state, newPage, state.price_adjust);
             await interaction.update({ content: content, components: components });
 
         // +++ NOVO: Lógica dos Botões de Filtro +++
@@ -449,11 +539,42 @@ module.exports = {
                 return;
             }
 
-            // +++ MUDANÇA: Chama a função de processamento real +++
-            await processVenda(interaction, state);
-            
-            // Limpa o estado
-            interaction.client.pendingLoots.delete(interactionId);
+            // +++ MUDANÇA: Verifica se é P2P ou Venda Normal +++
+            if (state.price_adjust) {
+                // --- FLUXO P2P ---
+                // 1. Calcula o preço total sugerido
+                let totalSuggestedPrice = 0;
+                for (const item of state.itemsToSell) {
+                    // Extrai o preço da descrição (ex: "Sugestão: 1.25 PO")
+                    const priceMatch = item.description.match(/Sugestão: ([\d\.]+)/);
+                    if (priceMatch) {
+                        totalSuggestedPrice += parseFloat(priceMatch[1]);
+                    }
+                }
+
+                // 2. Mostra o modal de definição de preço
+                const modal = new ModalBuilder()
+                    .setCustomId(`transacao_venda_modal|${interactionId}`) // O novo modal
+                    .setTitle('Definir Preço da Venda P2P');
+                
+                const priceInput = new TextInputBuilder()
+                    .setCustomId('p2p_price_input')
+                    .setLabel("Preço Total da Venda (em PO)")
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder("Ex: 150.75")
+                    .setValue(totalSuggestedPrice.toFixed(2)) // Preenche com a sugestão
+                    .setRequired(true);
+
+                modal.addComponents(new ActionRowBuilder().addComponents(priceInput));
+                await interaction.showModal(modal);
+
+            } else {
+                // --- FLUXO VENDA NORMAL ---
+                await processVenda(interaction, state);
+                interaction.client.pendingLoots.delete(interactionId);
+            }
+
+        
         }
     },
     
@@ -491,9 +612,40 @@ module.exports = {
             } else {
                 state.sellFilter = keywords;
                 // Reconstrói o menu de venda (volta para a página 0)
-                const { content, components } = await buildSellSelectMenu(state, 0); //
+                const { content, components } = await buildSellSelectMenu(state, 0, state.price_adjust);
                 await interaction.editReply({ content: content, components: components });
             }
+
+            // +++ NOVO: Lógica do Modal de Preço P2P +++
+        } else if (action === 'transacao_venda_modal') {
+            await interaction.deferUpdate(); // Confirma o modal de preço
+            const finalPrice = interaction.fields.getTextInputValue('p2p_price_input').replace(',', '.');
+            
+            if (isNaN(parseFloat(finalPrice)) || parseFloat(finalPrice) < 0) {
+                await interaction.followUp({ content: 'Valor inválido. Insira apenas números (ex: 150 ou 25.50).', ephemeral: true });
+                return;
+            }
+
+            state.proposedPrice = parseFloat(finalPrice); // Salva o preço no state
+
+            // Chama a função que posta a mensagem de confirmação "Sim/Não"
+            await postP2PConfirmation(interaction, state);
+
+            // +++ REQUERIMENTO 1: Apaga a mensagem da loja (menu de seleção) +++
+            try {
+                if (state.shopMessageId) {
+                    await interaction.channel.messages.delete(state.shopMessageId);
+                }
+            } catch (e) {
+                console.warn(`[WARN transacao P2P] Falha ao apagar msg da loja (seleção de itens): ${e.message}`);
+            }
+            
+            // Limpa o state original do /transacao
+            interaction.client.pendingLoots.delete(interactionId);
+            
+            // Confirma ao VENDEDOR que a proposta foi enviada
+            // await interaction.followUp({ content: 'Proposta de transação enviada ao comprador!', ephemeral: true });
+
 
             // +++ NOVO: Lógica do Modal de Confirmação de Cancelamento +++
         } else if (action === 'transacao_cancelar_confirm') {

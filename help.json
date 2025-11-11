@@ -43,9 +43,9 @@
   },
   "transacao": {
     "name": "/transacao",
-    "description": "Inicia uma transação de compra, venda ou serviço em um canal de mercado.",
-    "permissions": "Qualquer jogador (em canais de mercado)",
-    "usage": "Use dentro de um canal ou post de fórum de mercado.\n1. O bot identifica o tipo de mercado (Compra, Venda, etc.).\n2. Selecione seu personagem.\n3. **Compra:** Selecione os itens (máx 5) e clique em 'Definir Quantidades' para abrir um modal.\n4. **Venda:** (Não implementado).\n5. A transação é validada, seu inventário é atualizado e um log é criado."
+    "description": "Inicia uma transação de compra, venda ou P2P.",
+    "permissions": "Qualquer jogador (em canais de mercado ou inventário)",
+    "usage": "**Lojas Normais:**\nUse dentro de um canal de mercado.\n1. O bot identifica o tipo de mercado (Compra, Venda, etc.).\n2. Selecione seu personagem.\n3. **Compra:** Selecione os itens (máx 5) e clique em 'Definir Quantidades' para abrir um modal.\n4. **Venda:** Selecione os itens do seu inventário para vender à loja (com preço fixo).\n\n**Transação P2P (Jogador-para-Jogador):**\n1. Use `/transacao` no canal de inventário de **outro jogador** (que deve estar marcado como `[Players]` na planilha).\n2. Selecione os itens do seu inventário.\n3. Clique em 'Definir Preço' e insira o valor total da venda.\n4. Uma proposta será enviada, e o Comprador (dono do canal) poderá 'Aceitar' ou 'Recusar'.\n5. Se aceite, a troca de itens/ouro é automática."
   },
   "relatorio": {
     "name": "/relatorio",

@@ -40,12 +40,14 @@ async function createRollConfirmation(rollemMessage, parsedData, brecha) {
 
     // 3. Salva o estado para o handleButton
     if (!client.pendingRollConfirmations) client.pendingRollConfirmations = new Map();
-    client.pendingRollConfirmations.set(confirmationId, {
-        parsed: parsedData,
-        brecha: brecha,
-        confirmationMessageId: confirmationMessage.id,
-        rollemMessageId: rollemMessage.id // Guarda o ID da msg do rollem para reagir
-    });
+    // +++ CORREÇÃO (BUG 2): Adiciona o wrapper de timestamp +++
+    const data = {
+            parsed: parsedData,
+            brecha: brecha,
+            confirmationMessageId: confirmationMessage.id,
+            rollemMessageId: rollemMessage.id // Guarda o ID da msg do rollem para reagir
+    };
+    client.pendingRollConfirmations.set(confirmationId, { data: data, timestamp: Date.now() });
 
     // 4. Adiciona um timeout (recolhedor de lixo) para 5 minutos
     setTimeout(() => {
@@ -64,7 +66,8 @@ async function createRollConfirmation(rollemMessage, parsedData, brecha) {
  */
 async function handleButton(interaction) {
     const [action, confirmationId] = interaction.customId.split('|');
-    const state = interaction.client.pendingRollConfirmations.get(confirmationId);
+    // +++ CORREÇÃO (BUG 2): Lê a propriedade 'data' +++
+    const state = interaction.client.pendingRollConfirmations.get(confirmationId)?.data;
 
     // 1. Verifica se o estado existe
     if (!state) {

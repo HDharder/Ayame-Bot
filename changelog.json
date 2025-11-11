@@ -1,6 +1,38 @@
 {
   "updates": [
     {
+      "version": "2.2.0",
+      "date": "2025-11-11",
+      "title": "Transações P2P e Overhaul de Estabilidade (API/RAM)",
+      "features": [
+        "**Novo: Transações Jogador-para-Jogador (P2P)!**",
+        "O comando `/transacao` agora pode ser usado em canais de Inventário (designados com `[Players]` na planilha) para iniciar uma venda P2P.",
+        "O Vendedor seleciona itens do seu inventário e o bot calcula um 'Preço Sugerido' (50% para itens, 100% para materiais/ervas).",
+        "O Vendedor define um preço final num novo modal (`transacao_venda_modal`).",
+        "Uma mensagem pública de confirmação é enviada, com botões 'Sim, Aceitar' e 'Não, Recusar'.",
+        "Apenas o Comprador (dono do canal de inventário) pode aceitar ou recusar a proposta.",
+        "Ao aceitar, o bot *automaticamente* verifica o saldo do comprador e transfere o ouro e os itens entre os inventários de ambos.",
+        "A transação P2P é registada na aba da planilha especificada no `tipo de loja` (ex: 'Players').",
+        "**`/exibir` agora mostra o Histórico P2P:** Adicionada a nova opção `Histórico de Transações (P2P)`.",
+        "O bot agora lê todas as abas de loja marcadas com `[Players]` para compilar um histórico completo de Vendas e Compras P2P do personagem."
+      ],
+      "fixes": [
+        "**Correção Crítica (Economia):** A transação P2P agora verifica o saldo de ouro do Comprador *antes* de confirmar a transação, impedindo a exploração de ouro negativo (Bug 1).",
+        "Corrigido o `handleButton` do `/transacao` para que os botões 'Sim/Não' (P2P) possam ser clicados pelo Comprador (em vez de apenas pelo Vendedor).",
+        "Corrigido um bug em que os botões 'Sim/Não' não desapareciam ao clicar, causando um erro de 'Interação falhou' (timeout de 3 segundos). Os botões agora são removidos instantaneamente.",
+        "Corrigida a função `cacheSellPrices` (`utils/transacaoUtils.js`) para ler corretamente os preços das abas 'Itens' e 'Poção', resolvendo o erro `Duplicate header detected: \"Qntd\"`.",
+        "Corrigidos vários erros `This cell has not been loaded yet` no `cacheSellPrices` e `buildSellSelectMenu`.",
+        "Corrigidos vários `ReferenceError` no fluxo P2P (ex: `lookupIds`, `p2p_state.buyer.id`, `sellerPayload_AddItems`).",
+        "Corrigido o erro `SET_TYPE_ALREADY_CONTAINS_VALUE` (API do Discord) ao usar `new Set()` para as menções, permitindo testes P2P com uma única conta.",
+        "Atualizado o `/help transacao` para incluir a documentação da nova funcionalidade P2P e corrigir a descrição de Venda (que estava 'Não implementado')."
+      ],
+      "backend": [
+        "**Correção Crítica (Estabilidade API):** Implementada uma fila global (`saveRow` em `google.js`) para serializar todas as operações de escrita (`row.save()`) na planilha. Isto resolve o risco de erros `[429] Quota Exceeded` (Write) durante picos de uso (Bug 3).",
+        "**Correção Crítica (Fuga de Memória):** Refatorado o 'Recolhedor de Lixo' (`forceCleanup`) para ler estados que usam `timestamp` em vez de apenas `Interaction IDs`. Todos os estados de longa duração (`pendingP2PTrades`, `pendingRolls`, etc.) foram atualizados para usar este novo wrapper, resolvendo a fuga de memória (Bug 2).",
+        "Corrigido um bug de 'Condição de Corrida' (`Rollem Race Condition`) onde um jogador podia ter múltiplas 'brechas de rolagem' abertas no mesmo canal. O bot agora ignora a abertura de uma nova brecha se uma já existir (Bug 5)."
+      ]
+    },
+    {
       "version": "2.1.0",
       "date": "2025-11-11",
       "title": "Integração com Rollem e Otimização de Performance",
