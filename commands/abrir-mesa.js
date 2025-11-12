@@ -22,6 +22,8 @@ const {
 // +++ IMPORTA O NOVO UTILITÁRIO DE AUTENTICAÇÃO +++
 const { checkAuth, AuthLevels } = require('../utils/auth.js');
 
+const { registerReactionListener, removeReactionListener } = require('../utils/reactionManager.js');
+
 module.exports = {
 
   // 1. DEFINIÇÃO DO COMANDO (Sem alterações)
@@ -67,6 +69,7 @@ module.exports = {
   // 2. QUAIS INTERAÇÕES ESTE ARQUIVO GERENCIA (Sem alterações)
   buttons: ['fechar_inscricao', 'editar_mesa', 'cancelar_mesa'],
   modals: ['modal_editar'],
+  reactions: ['abrir-mesa'],
 
   // 3. EXECUÇÃO DO COMANDO PRINCIPAL (/abrir-mesa) (ATUALIZADO)
   async execute(interaction) {
@@ -161,6 +164,7 @@ module.exports = {
           console.error("Falha ao reagir:", reactError);
           interaction.followUp({ content: 'Aviso: Não consegui usar esse emote para reagir.', flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(console.error);
         });
+        // await mensagemAnuncio.react('❌').catch(console.error);
 
         // ===============================================
         // ATUALIZAÇÃO DA PLANILHA (SEM "DURAÇÃO")
@@ -183,6 +187,33 @@ module.exports = {
         };
         await sheetHistorico.addRow(dadosParaAdicionar);
         // ===============================================
+
+        // <<< REGISTRA OS OUVINTES DE REAÇÃO >>>
+        const mestreId = interaction.user.id;
+        // 1. Ouvinte para Fechar Inscrição (com o emote da mesa)
+        /*registerReactionListener(interaction.client, mensagemAnuncio.id, {
+            commandName: 'abrir-mesa', // Nome deste comando (data.name)
+            emojiIdentifier: emoteId, // O emote de inscrição (ID ou Unicode)
+            allowedUsers: [mestreId], // Apenas o mestre pode acionar
+            extraData: { action: 'fechar_inscricao', emoteId: emoteId } // Dados que o handleReaction irá receber
+        });*/
+
+        // 2. Ouvinte para Cancelar Mesa (com o X)
+        /*registerReactionListener(interaction.client, mensagemAnuncio.id, {
+            commandName: 'abrir-mesa',
+            emojiIdentifier: '❌', // O emoji de cancelar
+            allowedUsers: [mestreId], // Apenas o mestre
+            extraData: { action: 'cancelar_mesa' }
+        });*/
+        // (Não adicionamos o ✏️ pois não podemos abrir um Modal)
+
+        // 3. NOVO: Ouvinte para Reativar Botões (com 📋)
+        registerReactionListener(interaction.client, mensagemAnuncio.id, {
+            commandName: 'abrir-mesa',
+            emojiIdentifier: '📋', // O emoji de clipboard
+            allowedUsers: [mestreId], // Apenas o mestre
+            extraData: { action: 'reabrir_botoes' }
+        });
 
        await interaction.editReply({ content: 'Anúncio de mesa criado com sucesso!', components: [] });
 
@@ -209,18 +240,26 @@ module.exports = {
       try {
           if (action === 'fechar_inscricao') {
             await interaction.deferUpdate();
-            // ... (Lógica de fechar inscrição - sem alteração)
-            const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
-            disabledRow.components.forEach(comp => comp.setDisabled(true));
-            await interaction.message.edit({ components: [disabledRow] });
+
+            // +++ INÍCIO DA CORREÇÃO (BUG) +++
+            // [1] Busca a reação e os inscritos ANTES de editar a mensagem
             const message = await interaction.message.fetch();
             const reacao = message.reactions.cache.get(emoteId);
+
+            const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
+            disabledRow.components.forEach(comp => comp.setDisabled(true));
+            
             if (!reacao) {
               await interaction.followUp({ content: 'Erro: Não encontrei a reação do anúncio. Ninguém se inscreveu?', flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(console.error);
               return;
             }
             const usuarios = await reacao.users.fetch();
             const inscritos = usuarios.filter(user => !user.bot).map(user => user.username);
+
+            // [2] AGORA edita a mensagem (desabilita os botões)
+            await interaction.message.edit({ components: [disabledRow] });
+            // +++ FIM DA CORREÇÃO (BUG) +++
+
             if (inscritos.length === 0) {
                await interaction.followUp({ content: 'Sorteio cancelado: Ninguém se inscreveu.', flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(console.error);
                return;
@@ -235,6 +274,7 @@ module.exports = {
               content: `Inscrições fechadas!\n\n**Inscritos:**\n${inscritosFormatado}\n\nClique abaixo para definir os níveis e efetuar o sorteio.`,
               components: [row]
             });
+            removeReactionListener(interaction.client, interaction.message.id);
           }
           else if (action === 'cancelar_mesa') {
             await interaction.deferUpdate();
@@ -249,6 +289,8 @@ module.exports = {
             }
             await interaction.message.delete();
             await interaction.followUp({ content: 'Mesa cancelada e removida do histórico.', flags: [MessageFlagsBitField.Flags.Ephemeral] });
+
+            removeReactionListener(interaction.client, interaction.message.id);
           }
           else if (action === 'editar_mesa') {
             // ===============================================
@@ -405,8 +447,7 @@ module.exports = {
 
         await message.edit({ content: anuncioCompleto });
         await interaction.editReply({ content: 'Mesa atualizada no Discord e na planilha!'});
-      } catch (error)
-{
+      } catch (error) {
         console.error("Erro no manipulador de modal (modal_editar):", error);
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply({ content: `Ocorreu um erro ao processar o formulário: ${error.message}`, components: [] }).catch(console.error);
@@ -415,5 +456,96 @@ module.exports = {
         }
       }
     }
+  },
+
+  // ===============================================
+  // 5. NOVO: GERENCIADOR DE REAÇÕES
+  // ===============================================
+  /**
+   * Chamado pelo index.js quando uma reação monitorada é adicionada.
+   * @param {import('discord.js').MessageReaction} reaction - O objeto da reação.
+   * @param {import('discord.js').User} user - O usuário (Mestre) que reagiu.
+   * @param {object} listener - O objeto do ouvinte que foi salvo (com .extraData).
+   */
+  async handleReaction(reaction, user, listener) {
+    const { action } = listener.extraData;
+    const { message } = reaction; // A mensagem que sofreu a reação
+    const client = reaction.client; // O cliente (bot)
+
+    try {
+      // --- AÇÃO: Fechar Inscrição (via Reação) ---
+      if (action === 'fechar_inscricao') {
+        const { emoteId } = listener.extraData; // Pega o emoteId dos dados extras
+
+        // +++ INÍCIO DA CORREÇÃO (BUG) +++
+        // [1] Pega os inscritos ANTES de remover as reações
+        const usuarios = await reaction.users.fetch();
+        const inscritos = usuarios.filter(u => !u.bot).map(u => u.username);
+        // +++ FIM DA CORREÇÃO (BUG) +++
+
+        // 1. Remove listeners (para evitar duplo clique) e desabilita botões
+        removeReactionListener(client, message.id);
+        const disabledRow = ActionRowBuilder.from(message.components[0]);
+        disabledRow.components.forEach(comp => comp.setDisabled(true));
+        await message.edit({ components: [disabledRow] });
+        await message.reactions.removeAll().catch(() => {}); // Limpa todas as reações
+        
+        if (inscritos.length === 0) {
+           await message.channel.send({ content: 'Sorteio cancelado: Ninguém se inscreveu.' });
+           return;
+        }
+
+        // 3. Envia mensagem pública de sorteio (Lógica duplicada do handleButton)
+        let inscritosFormatado = `\`\`\`${inscritos.join(' ')}\`\`\``;
+        const sortButton = new ButtonBuilder()
+          .setCustomId('show_sort_modal')
+          .setLabel('Efetuar Sorteio')
+          .setStyle(ButtonStyle.Success);
+        const row = new ActionRowBuilder().addComponents(sortButton);
+        await message.channel.send({
+          content: `Inscrições fechadas!\n\n**Inscritos:**\n${inscritosFormatado}\n\nClique abaixo para definir os níveis e efetuar o sorteio.`,
+          components: [row]
+        });
+      }
+
+      // --- AÇÃO: Cancelar Mesa (via Reação) ---
+      else if (action === 'cancelar_mesa') {
+        // 1. Remove ouvintes
+        removeReactionListener(client, message.id);
+
+        // 2. Atualiza Planilha (Lógica duplicada do handleButton)
+        await docControle.loadInfo();
+        const sheetHistorico = docControle.sheetsByTitle['Historico'];
+        await sheetHistorico.loadHeaderRow();
+        const rows = await sheetHistorico.getRows();
+        const row = rows.find(r => r.get('ID da Mensagem') === message.id);
+        if (row) {
+          await row.delete();
+        }
+
+        // 3. Apaga a mensagem da mesa
+        await message.delete();
+        // (Não podemos enviar 'followUp' efêmero de confirmação aqui)
+      
+
+      // --- AÇÃO: Reabrir Botões (via 📋) ---
+      } else if (action === 'reabrir_botoes') {
+          await reaction.users.remove(user.id).catch(() => {});
+          const currentComponents = message.components;
+          if (!currentComponents || currentComponents.length === 0) return;
+          const enabledButtons = currentComponents[0].components.map(comp => 
+              ButtonBuilder.from(comp).setDisabled(false)
+          );
+          const enabledRow = new ActionRowBuilder().addComponents(enabledButtons);
+          await message.edit({ components: [enabledRow] });
+      }
+      // +++ FIM DAS NOVAS AÇÕES +++
+
+    } catch (error) {
+        console.error(`[ERRO handleReaction] Falha ao processar reação '${action}' para msg ${message.id}:`, error);
+        // Tenta enviar uma mensagem pública de erro
+        await message.channel.send({ content: `Ocorreu um erro ao processar a reação ${reaction.emoji.name}.` }).catch(() => {});
+    }
   }
+
 };

@@ -15,7 +15,7 @@
     "name": "/abrir-mesa",
     "description": "Cria um anúncio de mesa com inscrições via reação.",
     "permissions": "Narrador, Staff",
-    "usage": "1. Use `/abrir-mesa` e preencha todos os parâmetros.\n2. O bot criará um anúncio público. O Mestre pode reagir com o emote da mesa para fechar inscrições ou com ❌ para cancelar.\n3. Após fechar, use o botão 'Efetuar Sorteio'.\n**Importante:** Este comando é o primeiro passo. Você precisará usar `/registrar-mesa` depois."
+    "usage": "1. Use `/abrir-mesa` e preencha todos os parâmetros.\n2. O bot criará um anúncio público.\n**Correção de Erro:** Se os botões travarem ou desaparecerem devido a um erro, o Mestre pode reagir à mensagem com 📋 (clipboard) para reativá-los."
   },
   "inventario": {
     "name": "/inventario",

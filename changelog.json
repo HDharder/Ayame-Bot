@@ -1,6 +1,26 @@
 {
   "updates": [
     {
+      "version": "2.2.2",
+      "date": "2025-11-12",
+      "title": "Persistência de Estado (Anti-Crash) e Novo Sistema de Reações",
+      "features": [
+        "**Novo: Sistema de Reação (`reactionManager.js`):** O bot agora pode 'ouvir' reações em mensagens específicas (atualmente usado pelo `/abrir-mesa`).",
+        "**`/abrir-mesa` Atualizado (Agora usa Reações):**",
+        "Adicionada a reação 📋 (clipboard) como uma ferramenta de emergência: O mestre pode reagir com 📋 para reativar os botões (Fechar/Editar/Cancelar) caso eles travem ou falhem."
+      ],
+      "fixes": [
+        "Corrigido um bug de 'condição de corrida' no `/abrir-mesa` onde o bot tentava ler os inscritos (reações) *depois* de já os ter removido, fazendo com que a lista de inscritos falhasse."
+      ],
+      "backend": [
+        "**Estabilidade Crítica (Persistência de Estado):** Implementado um sistema (`saveAllStates`, `loadAllStates`) em `index.js` que salva todos os estados pendentes (Propostas P2P, Ouvintes de Reação, etc.) em ficheiros JSON na pasta `/states/`.",
+        "O bot agora recarrega estes estados ao reiniciar, garantindo que os botões (P2P, `/abrir-mesa`) sobrevivam a reinícios ou 'crashes'.",
+        "Adicionados 'hooks' de desligamento (`SIGINT`) e 'crash' (`uncaughtException`) para forçar um salvamento de emergência, garantindo perda mínima de dados.",
+        "**Estabilidade Crítica (Fuga de Memória):** Refatorado o 'Recolhedor de Lixo' (`forceCleanup`) para limpar estados com `timestamp` (Bug 2).",
+        "**Estabilidade Crítica (API):** Implementada a fila global `saveRow` para resolver o `[429] Quota Exceeded` (Write) (Bug 3)."
+      ]
+    },
+    {
       "version": "2.2.1",
       "date": "2025-11-11",
       "title": "Hotfix - Correção de API (Erro 429) na Paginação do /transacao",

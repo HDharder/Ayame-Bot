@@ -3,7 +3,8 @@ require('dotenv').config();
 const { loadChannelRules } = require('./utils/channelGuard.js'); // +++ IMPORTA O GUARD +++
 const { handleRollemMessage } = require('./utils/rollemListener.js'); // <<< NOVO: Importa o escutador
 const rollObserver = require('./utils/rollObserver.js');
-const { preloadInventoryEmbedData } = require('./utils/google.js');
+const { preloadInventoryEmbedData, docCraft } = require('./utils/google.js');
+const { preloadItemCategories } = require('./utils/itemUtils.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const ADMIN_SERVER_ID = process.env.ADMIN_SERVER_ID;
@@ -170,17 +171,128 @@ function startRoutineGarbageCollector() {
     const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 Hora
 
     setInterval(() => {
-        console.log(`[INFO GarbageCollector] A executar limpeza de rotina...`);
+        // console.log(`[INFO GarbageCollector] A executar limpeza de rotina...`);
+        console.log(`[INFO Rotina] A executar limpeza (GarbageCollector) e salvamento de estado (Persistência)...`);
+        saveAllStates(); // +++ 1. SALVAMENTO PERIÓDICO (Checkpoint) +++
         forceCleanup(false); // Chama a limpeza (sem forçar)
     }, CHECK_INTERVAL_MS);
 }
 // +++ FIM: SISTEMA DE GESTÃO DE MEMÓRIA +++
+
+// +++ INÍCIO: SISTEMA DE PERSISTÊNCIA DE ESTADO (JSON) +++
+
+// +++ Define o nome da pasta de estados +++
+const STATES_DIR = path.join(__dirname, 'states');
+
+// Define os caminhos para os nossos ficheiros de estado
+const STATE_PATHS = {
+    pendingRegistrations: path.join(STATES_DIR, 'state_registrations.json'),
+    pendingLoots: path.join(STATES_DIR, 'state_loots.json'),
+    pendingRelatorios: path.join(STATES_DIR, 'state_relatorios.json'),
+    pendingInventarios: path.join(STATES_DIR, 'state_inventarios.json'),
+    pendingRolls: path.join(STATES_DIR, 'state_rolls.json'),
+    pendingRollConfirmations: path.join(STATES_DIR, 'state_roll_confirms.json'),
+    pendingP2PTrades: path.join(STATES_DIR, 'state_p2p_trades.json'),
+    reactionListeners: path.join(STATES_DIR, 'state_reactions.json')
+};
+
+/**
+ * Converte um Map para um Array (para que possa ser salvo como JSON).
+ * @param {Map} map 
+ */
+function mapToJSON(map) {
+    return JSON.stringify(Array.from(map.entries()), null, 4);
+}
+
+/**
+ * Converte um Array (lido do JSON) de volta para um Map.
+ * @param {string} jsonString 
+ */
+function jsonToMap(jsonString) {
+    try {
+        const arr = JSON.parse(jsonString);
+        return new Map(arr);
+    } catch (e) {
+        return new Map(); // Retorna um mapa vazio se o JSON estiver corrompido
+    }
+}
+
+/**
+ * Salva todos os estados voláteis da RAM para ficheiros JSON.
+ */
+function saveAllStates() {
+    console.log("[INFO Persistência] A guardar todos os estados para o disco...");
+    try {
+        // +++ GARANTE QUE A PASTA EXISTE +++
+        // (Não precisa de criar a pasta manualmente)
+        if (!fs.existsSync(STATES_DIR)) {
+            fs.mkdirSync(STATES_DIR, { recursive: true });
+            console.log(`[INFO Persistência] Pasta 'states' criada em ${STATES_DIR}`);
+        }
+
+        for (const [mapName, mapObject] of mapsToClean.entries()) {
+            const filePath = STATE_PATHS[mapName];
+            if (filePath && mapObject) {
+                fs.writeFileSync(filePath, mapToJSON(mapObject));
+            }
+        }
+        console.log("[INFO Persistência] Todos os estados foram salvos com sucesso.");
+    } catch (error) {
+        console.error("[ERRO Persistência] Falha crítica ao salvar estados:", error);
+    }
+}
+
+/**
+ * Carrega todos os estados dos ficheiros JSON para a RAM (client).
+ */
+function loadAllStates() {
+    console.log("[INFO Persistência] A carregar estados do disco para a RAM...");
+    try {
+        for (const mapName in STATE_PATHS) {
+            const filePath = STATE_PATHS[mapName];
+            if (fs.existsSync(filePath)) {
+                const fileData = fs.readFileSync(filePath, 'utf8');
+                const loadedMap = jsonToMap(fileData);
+                
+                // Atribui o mapa carregado ao 'client'
+                client[mapName] = loadedMap; 
+                
+                console.log(`[INFO Persistência] Carregados ${loadedMap.size} registos de '${mapName}'.`);
+            }
+        }
+        console.log("[INFO Persistência] Carregamento de estados concluído.");
+    } catch (error) {
+        console.error("[ERRO Persistência] Falha crítica ao carregar estados:", error);
+    }
+}
+// +++ FIM: SISTEMA DE PERSISTÊNCIA DE ESTADO (JSON) +++
 
 // --- 4. Registro dos Comandos (REST) ---
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
 client.once(Events.ClientReady, async (bot) => {
   console.log(`Bot ${bot.user.tag} está online!`);
+
+  // +++ CARREGA OS ESTADOS PERSISTIDOS PRIMEIRO +++
+  loadAllStates();
+
+  // --- INÍCIO DO TESTE DE PERSISTÊNCIA (fs) ---
+  console.log("[Teste FS] A tentar escrever no disco...");
+  try {
+      const testFilePath = path.join(__dirname, 'persistence_test.json');
+      const testData = {
+          message: "Se este ficheiro existe, o bot tem permissão de escrita.",
+          timestamp: new Date().toISOString()
+      };
+      
+      fs.writeFileSync(testFilePath, JSON.stringify(testData, null, 4));
+      
+      console.log(`[Teste FS SUCESSO] Ficheiro 'persistence_test.json' escrito com sucesso na pasta principal.`);
+  } catch (error) {
+      console.error(`[Teste FS FALHA] Não foi possível escrever o ficheiro de teste:`, error);
+      console.error("[Teste FS FALHA] A persistência de estado (Bug 2) NÃO irá funcionar neste servidor.");
+  }
+  // --- FIM DO TESTE DE PERSISTÊNCIA (fs) ---
 
   // +++ ADICIONA OS MAPAS AO GESTOR DE LIMPEZA +++
   mapsToClean.set('pendingRegistrations', client.pendingRegistrations); //
@@ -221,6 +333,9 @@ client.once(Events.ClientReady, async (bot) => {
 
   // 4. Configura um temporizador para atualizar o cache a cada 15 minutos
   setInterval(refreshEmbedData, 15 * 60 * 1000); 
+
+  // +++ CARREGA O CACHE DE ITENS (para /gasto, /transacao, etc.) +++
+  await preloadItemCategories(docCraft); //
 
   // +++ FIM DA NOVA LÓGICA DE CACHE DE EMBED +++
 
@@ -465,6 +580,34 @@ client.on(Events.MessageCreate, async message => {
     if (message.author.username === 'rollem') { //
         await handleRollemMessage(message);
     }
+});
+
+// +++ HOOK DE ENCERRAMENTO (Shutdown Hook) +++
+process.on('SIGINT', () => {
+    console.log("[INFO Shutdown] Sinal de encerramento (SIGINT) recebido.");
+    console.log("[INFO Shutdown] A guardar todos os estados pendentes ANTES de desligar...");
+    saveAllStates(); // Salva tudo
+    console.log("[INFO Shutdown] Estados guardados. A desligar.");
+    process.exit(0);
+});
+
+// +++ 2. HOOK DE "CRASH" (Salvamento de Emergência) +++
+// Isto é acionado se o bot sofrer um erro de código que não foi tratado.
+process.on('uncaughtException', (error, origin) => {
+    console.error('[ERRO FATAL] Uncaught Exception (CRASH):', error);
+    console.error('[ERRO FATAL] Origem:', origin);
+    
+    console.log("[INFO Shutdown] A tentar um salvamento de emergência ANTES de cair...");
+    try {
+        // Tenta um último salvamento. Como é síncrono, deve bloquear
+        // o processo o tempo suficiente para terminar antes de o bot cair.
+        saveAllStates();
+        console.log("[INFO Shutdown] Salvamento de emergência concluído.");
+    } catch (saveError) {
+        console.error("[ERRO FATAL] Salvamento de emergência falhou:", saveError);
+    }
+    
+    process.exit(1); // Sai com um código de erro, indicando que houve um crash
 });
 
 // --- 8. Login ---
