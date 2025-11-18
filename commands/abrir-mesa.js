@@ -241,18 +241,37 @@ module.exports = {
           if (action === 'fechar_inscricao') {
             await interaction.deferUpdate();
 
-            // +++ INÍCIO DA CORREÇÃO (BUG) +++
-            // [1] Busca a reação e os inscritos ANTES de editar a mensagem
+            // [1] Busca a mensagem mais recente (já está correto)
             const message = await interaction.message.fetch();
-            const reacao = message.reactions.cache.get(emoteId);
+            
+            // Tenta buscar a reação do cache.
+            let reacao = message.reactions.cache.get(emoteId);
 
+            // ⚠️ CORREÇÃO DO BUG: Se não estiver no cache (ex: após restart), força o fetch.
+            if (!reacao) {
+                try {
+                    // Busca todas as reações do Discord (popula o cache).
+                    const reactions = await message.reactions.fetch();
+                    // Tenta obter a reação específica da coleção recém-buscada.
+                    reacao = reactions.get(emoteId);
+                } catch (error) {
+                    console.error("Falha ao buscar reações da mensagem:", error);
+                }
+            }
+            
             const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
             disabledRow.components.forEach(comp => comp.setDisabled(true));
             
             if (!reacao) {
-              await interaction.followUp({ content: 'Erro: Não encontrei a reação do anúncio. Ninguém se inscreveu?', flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(console.error);
+              // Se reacao ainda for undefined (ex: o emote foi removido ou erro de API)
+              await interaction.followUp({ 
+                content: 'Erro: Não consegui encontrar a reação de inscrição na mensagem. Se o erro persistir, o emote pode ter sido removido.', 
+                flags: [MessageFlagsBitField.Flags.Ephemeral] 
+              }).catch(console.error);
               return;
             }
+            
+            // O restante da lógica continua igual, agora com a reação garantida.
             const usuarios = await reacao.users.fetch();
             const inscritos = usuarios.filter(user => !user.bot).map(user => user.username);
 
