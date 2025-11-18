@@ -241,44 +241,49 @@ module.exports = {
           if (action === 'fechar_inscricao') {
             await interaction.deferUpdate();
 
-            // [1] Busca a mensagem mais recente (já está correto)
+            // [1] Busca a mensagem mais recente e o ID do bot
             const message = await interaction.message.fetch();
+            const botId = interaction.client.user.id;
             
-            // Tenta buscar a reação do cache.
-            let reacao = message.reactions.cache.get(emoteId);
-
-            // ⚠️ CORREÇÃO DO BUG: Se não estiver no cache (ex: após restart), força o fetch.
+            // ⚠️ NOVA LÓGICA: PROCURAR PELA REAÇÃO DO BOT NA MENSAGEM
+            // 1. Tenta buscar a reação no cache onde o bot reagiu (mais rápido).
+            let reacao = message.reactions.cache.find(reaction => {
+                 // Verifica se o bot reagiu a essa reação.
+                return reaction.users.cache.has(botId);
+            });
+            
+            // 2. Se não encontrou no cache (ex: após restart), força o fetch de todas as reações.
             if (!reacao) {
                 try {
-                    // Busca todas as reações do Discord (popula o cache).
-                    const reactions = await message.reactions.fetch();
-                    // Tenta obter a reação específica da coleção recém-buscada.
-                    reacao = reactions.get(emoteId);
+                    // Se o fetch falhou antes com TypeError, vamos verificar se existe antes de chamar.
+                    if (typeof message.reactions.fetch === 'function') {
+                        const reactions = await message.reactions.fetch();
+                         // Tenta encontrar na coleção recém-buscada.
+                        reacao = reactions.find(reaction => reaction.users.cache.has(botId));
+                    }
                 } catch (error) {
-                    console.error("Falha ao buscar reações da mensagem:", error);
+                    console.error("Falha ao buscar reações da mensagem (Nova tentativa):", error);
                 }
             }
-            
+
             const disabledRow = ActionRowBuilder.from(interaction.message.components[0]);
             disabledRow.components.forEach(comp => comp.setDisabled(true));
             
             if (!reacao) {
-              // Se reacao ainda for undefined (ex: o emote foi removido ou erro de API)
               await interaction.followUp({ 
-                content: 'Erro: Não consegui encontrar a reação de inscrição na mensagem. Se o erro persistir, o emote pode ter sido removido.', 
+                content: 'Erro: Não consegui encontrar a reação de inscrição na mensagem. O bot pode ter perdido a reação, ou ela pode ter sido removida. Tente o `/abrir-mesa` novamente.', 
                 flags: [MessageFlagsBitField.Flags.Ephemeral] 
               }).catch(console.error);
               return;
             }
             
-            // O restante da lógica continua igual, agora com a reação garantida.
+            // Lógica para contar os inscritos, agora usando o objeto 'reacao' encontrado
             const usuarios = await reacao.users.fetch();
             const inscritos = usuarios.filter(user => !user.bot).map(user => user.username);
 
             // [2] AGORA edita a mensagem (desabilita os botões)
             await interaction.message.edit({ components: [disabledRow] });
-            // +++ FIM DA CORREÇÃO (BUG) +++
-
+            
             if (inscritos.length === 0) {
                await interaction.followUp({ content: 'Sorteio cancelado: Ninguém se inscreveu.', flags: [MessageFlagsBitField.Flags.Ephemeral] }).catch(console.error);
                return;
