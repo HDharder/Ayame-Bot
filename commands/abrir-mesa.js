@@ -12,8 +12,7 @@ const {
 
 // Importamos a lógica necessária do Google
 const {
-  docSorteio,
-  docControle,
+  sheets,
   parsearAnuncioMesa,
   fetchPlayerLevels,
   lookupIds
@@ -115,7 +114,7 @@ module.exports = {
             initialContent = `${nomeMesaFormatado}${mestreMention}\n${anuncioBase}\n${mencaoJogadoresCargo}${observacoesFormatado}`;
         } else {
             const todosPlayerTags = [];
-            const sheetPlayerId = docSorteio.sheetsByTitle['Player ID']; 
+            const sheetPlayerId = sheets.docSorteio.sheetsByTitle['Player ID']; 
             if(sheetPlayerId) {
                 const rows = await sheetPlayerId.getRows(); 
                 rows.forEach(row => { if(row.get('Tag')) todosPlayerTags.push(row.get('Tag')); });
@@ -170,8 +169,8 @@ module.exports = {
         // ATUALIZAÇÃO DA PLANILHA (SEM "DURAÇÃO")
         // ===============================================
         const [dataPart, horaPart] = dataHoraString.split(' ');
-        await docControle.loadInfo();
-        const sheetHistorico = docControle.sheetsByTitle['Historico'];
+        await sheets.docControle.loadInfo();
+        const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
         await sheetHistorico.loadHeaderRow();
         const dadosParaAdicionar = {
           'ID da Mensagem': mensagemAnuncio.id,
@@ -303,8 +302,8 @@ module.exports = {
           else if (action === 'cancelar_mesa') {
             await interaction.deferUpdate();
             // ... (Lógica de cancelar mesa - sem alteração)
-            await docControle.loadInfo();
-            const sheetHistorico = docControle.sheetsByTitle['Historico'];
+            await sheets.docControle.loadInfo();
+            const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
             await sheetHistorico.loadHeaderRow();
             const rows = await sheetHistorico.getRows();
             const row = rows.find(r => r.get('ID da Mensagem') === interaction.message.id);
@@ -322,8 +321,8 @@ module.exports = {
             // ===============================================
             
             // 1. Buscar da Planilha (Níveis, Data, Hora)
-            await docControle.loadInfo();
-            const sheetHistorico = docControle.sheetsByTitle['Historico'];
+            await sheets.docControle.loadInfo();
+            const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
             await sheetHistorico.loadHeaderRow();
             const rows = await sheetHistorico.getRows();
             const row = rows.find(r => r.get('ID da Mensagem') === interaction.message.id);
@@ -435,8 +434,8 @@ module.exports = {
 
         const [dataPart, horaPart] = dataHoraString.split(' ');
         
-        await docControle.loadInfo();
-        const sheetHistorico = docControle.sheetsByTitle['Historico'];
+        await sheets.docControle.loadInfo();
+        const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
         await sheetHistorico.loadHeaderRow();
         const rows = await sheetHistorico.getRows();
         const row = rows.find(r => r.get('ID da Mensagem') === originalMessageId);
@@ -538,8 +537,8 @@ module.exports = {
         removeReactionListener(client, message.id);
 
         // 2. Atualiza Planilha (Lógica duplicada do handleButton)
-        await docControle.loadInfo();
-        const sheetHistorico = docControle.sheetsByTitle['Historico'];
+        await sheets.docControle.loadInfo();
+        const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
         await sheetHistorico.loadHeaderRow();
         const rows = await sheetHistorico.getRows();
         const row = rows.find(r => r.get('ID da Mensagem') === message.id);

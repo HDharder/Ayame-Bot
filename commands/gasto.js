@@ -7,7 +7,7 @@ const { parseItemInput } = require('../utils/itemUtils.js'); //
 const { getItemCategory, parseInventoryString } = require('../utils/itemUtils.js'); //
 const { batchRemoveInventories } = require('../utils/inventoryManager.js'); //
 const { checkChannelPermission } = require('../utils/channelGuard.js'); //
-const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet } = require('../utils/google.js'); //
+const { sheets, getValuesFromSheet, setValuesInSheet } = require('../utils/google.js'); //
 
 // Pega o ID do canal de log (o mesmo usado pelo /loot e /relatorio)
 //const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID; //
@@ -113,7 +113,7 @@ module.exports = {
                 const inventoryByCategory = new Map();
                 
                 for (const item of requestedItemsToRemove) {
-                    const category = await getItemCategory(item.validationName, docCraft); //
+                    const category = await getItemCategory(item.validationName, sheets.docCraft); //
                     if (!inventoryByCategory.has(category)) {
                         // Carrega o inventário da categoria (ex: "Armas") e parseia
                         const currentString = characterRow.get(category) || '';
@@ -192,8 +192,8 @@ module.exports = {
                         const criteria = { 'JOGADOR': username, 'PERSONAGEM': characterName };
 
                         // +++ CORREÇÃO: Pega a planilha 'Inventário' diretamente +++
-                        await docInventario.loadInfo(); //
-                        const sheet = docInventario.sheetsByTitle['Inventário']; //
+                        await sheets.docInventario.loadInfo(); //
+                        const sheet = sheets.docInventario.sheetsByTitle['Inventário']; //
                         if (!sheet) throw new Error("Aba 'Inventário' não encontrada ao tentar salvar o log de gasto.");
 
                         // 3. Pega a string atual da coluna "Gastos"

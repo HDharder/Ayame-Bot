@@ -31,22 +31,27 @@ const serviceAccountAuth = new JWT({
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
-let docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
-let docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
-let docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
-let docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
-let docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
- /**
- * Recria as instâncias das planilhas para libertar o cache de células (loadCells) da memória.
- * Deve ser chamado periodicamente pelo GarbageCollector.
- */
+// 1. CRIA O CONTAINER (Objeto que guarda as referências)
+const sheets = {
+    docSorteio: new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth),
+    docControle: new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth),
+    docCraft: new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth),
+    docInventario: new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth),
+    docComprasVendas: new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth)
+};
+
+/**
+* Recria as instâncias das planilhas para libertar o cache de células (loadCells) da memória.
+* Deve ser chamado periodicamente pelo GarbageCollector.
+*/
 function flushDocCache() {
     console.log("[INFO Google] A limpar cache das planilhas (Flush)...");
-    docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
-    docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
-    docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
-    docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
-    docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
+    // 2. ATUALIZA AS PROPRIEDADES DENTRO DO CONTAINER
+    sheets.docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
+    sheets.docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
+    sheets.docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
+    sheets.docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
+    sheets.docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
 }
 
 // +++ INÍCIO DA CORREÇÃO (BUG 3): Fila Global de Salvamento +++
@@ -91,9 +96,9 @@ async function saveRow(row) {
 // --- 3. Lógica Principal do Sorteio (Refatorada) ---
 // (Esta função ainda usa 'Primários'/'Secundários' como no seu ficheiro)
 async function fetchPlayerLevels(playerNames) {
-  await docSorteio.loadInfo();
+  await sheets.docSorteio.loadInfo();
   // <<< ALTERAÇÃO: Usa "Personagens" >>>
-  const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+  const sheetPersonagens = sheets.docSorteio.sheetsByTitle['Personagens'];
   if (!sheetPersonagens) {
     throw new Error("Aba 'Personagens' não encontrada na planilha de Sorteio.");
   }
@@ -179,8 +184,8 @@ async function executarLogicaSorteio(nomesInscritos, levelFilter = []) {
 }
 
 async function carregarDadosPlanilha() {
-    await docSorteio.loadInfo();
-    const sheet = docSorteio.sheetsByTitle["Mesas Jogadas (Total)"];
+    await sheets.docSorteio.loadInfo();
+    const sheet = sheets.docSorteio.sheetsByTitle["Mesas Jogadas (Total)"];
     if (!sheet) {
         throw new Error("Aba 'Mesas Jogadas (Total)' não foi encontrada!");
     }
@@ -273,8 +278,8 @@ function realizarSorteio(jogadoresOrdenados) {
 async function lookupUsernames(inputs) {
     if (!inputs || inputs.length === 0) return [];
     try { 
-        await docSorteio.loadInfo();
-        const sheetPlayerId = docSorteio.sheetsByTitle["Player ID"];
+        await sheets.docSorteio.loadInfo();
+        const sheetPlayerId = sheets.docSorteio.sheetsByTitle["Player ID"];
         if (!sheetPlayerId) {
             console.warn("[AVISO] Aba 'Player ID' não encontrada. Retornando inputs originais.");
             return inputs.map((item) => item.trim());
@@ -317,8 +322,8 @@ async function lookupUsernames(inputs) {
 
 async function lookupIds(tags) {
     if (!tags || tags.length === 0) return [];
-    await docSorteio.loadInfo(); 
-    const sheetPlayerId = docSorteio.sheetsByTitle['Player ID'];
+    await sheets.docSorteio.loadInfo(); 
+    const sheetPlayerId = sheets.docSorteio.sheetsByTitle['Player ID'];
     if (!sheetPlayerId) {
         console.warn("[AVISO] Aba 'Player ID' não encontrada para buscar IDs. Retornando vazio.");
         return [];
@@ -352,8 +357,8 @@ async function lookupIds(tags) {
 // --- 5. Funções Específicas de Comandos ---
 async function parsearAnuncioMesa(guild, niveisString, dataHoraString, duracao) {
   // 1. Carregar Mapa de Cargos
-  await docSorteio.loadInfo();
-  const sheetPlayerId = docSorteio.sheetsByTitle["Player ID"];
+  await sheets.docSorteio.loadInfo();
+  const sheetPlayerId = sheets.docSorteio.sheetsByTitle["Player ID"];
   const roleNameToIdMap = new Map();
   if (sheetPlayerId) {
       try {
@@ -552,9 +557,9 @@ async function incrementarContagem(sheet, playerNames, targetColumnIndex, charac
 async function getPlayerTokenCount(playerTag) {
     if (!playerTag) return 0;
     try {
-        await docSorteio.loadInfo(); 
-        const sheetTokens = docSorteio.sheetsByTitle['Tokens'];
-        const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+        await sheets.docSorteio.loadInfo(); 
+        const sheetTokens = sheets.docSorteio.sheetsByTitle['Tokens'];
+        const sheetPersonagens = sheets.docSorteio.sheetsByTitle['Personagens'];
         if (!sheetTokens || !sheetPersonagens) {
             console.error("[ERRO getPlayerTokenCount] Aba 'Tokens' ou 'Personagens' não encontrada na planilha de Sorteio.");
             return 0;
@@ -602,8 +607,8 @@ async function spendPlayerTokens(playerTag, amountToSpend) {
     if (!playerTag || typeof amountToSpend !== "number" || amountToSpend <= 0)
         return false;
     try {
-        await docSorteio.loadInfo();
-        const sheetTokens = docSorteio.sheetsByTitle["Tokens"];
+        await sheets.docSorteio.loadInfo();
+        const sheetTokens = sheets.docSorteio.sheetsByTitle["Tokens"];
         if (!sheetTokens) {
             console.error("[ERRO spendPlayerTokens] Aba 'Tokens' não encontrada.");
             return false;
@@ -648,8 +653,8 @@ async function spendPlayerTokens(playerTag, amountToSpend) {
 async function incrementarMesasMestradas(mestreUsername) {
     if (!mestreUsername) return false;
     try {
-        await docSorteio.loadInfo();
-        const sheetTokens = docSorteio.sheetsByTitle["Tokens"];
+        await sheets.docSorteio.loadInfo();
+        const sheetTokens = sheets.docSorteio.sheetsByTitle["Tokens"];
         if (!sheetTokens) {
             console.error("[ERRO incrementarMesasMestradas] Aba 'Tokens' não encontrada.");
             return false;
@@ -791,14 +796,14 @@ async function clearValuesInSheet(sheet, criteria, columnsToClear) {
 async function preloadInventoryEmbedData() {
     try {
         console.log("[INFO Google] Pré-carregando dados para embeds de inventário...");
-        await docSorteio.loadInfo();
-        const sheetTokens = docSorteio.sheetsByTitle["Tokens"];
+        await sheets.docSorteio.loadInfo();
+        const sheetTokens = sheets.docSorteio.sheetsByTitle["Tokens"];
         await sheetTokens.loadHeaderRow(1); const rowsTokens = await sheetTokens.getRows();
         const tokenDataMap = new Map(rowsTokens.map((r) => [String(r.get("Nome")).trim().toLowerCase(), parseInt(r.get("Saldo")) || 0]));
-        const sheetChars = docSorteio.sheetsByTitle["Personagens"];
+        const sheetChars = sheets.docSorteio.sheetsByTitle["Personagens"];
         await sheetChars.loadHeaderRow(2); const rowsChars = await sheetChars.getRows();
         const charDataMap = new Map(rowsChars.map((r) => { const key = `${String(r.get("Nome")).trim().toLowerCase()}-${String(r.get("Personagem")).trim().toLowerCase()}`; return [key, { level: parseInt(r.get("Level")) || 1, mesas: parseInt(r.get("Mesas Jogadas")) || 0 }]; }));
-        const sheetXP = docSorteio.sheetsByTitle["Player ID"];
+        const sheetXP = sheets.docSorteio.sheetsByTitle["Player ID"];
         await sheetXP.loadHeaderRow(1); const nivelColIndex = sheetXP.headerValues.indexOf("Nível"); const totalColIndex = sheetXP.headerValues.indexOf("Total");
         if (nivelColIndex === -1 || totalColIndex === -1) throw new Error("Colunas 'Nível' ou 'Total' não encontradas em Player ID.");
         await sheetXP.loadCells({ startRowIndex: 1, endRowIndex: sheetXP.rowCount, startColumnIndex: Math.min(nivelColIndex, totalColIndex), endColumnIndex: Math.max(nivelColIndex, totalColIndex) + 1 });
@@ -820,11 +825,7 @@ function getPlayerTokenCountFromData(playerTag, tokenDataMap) {
 
 // --- 6. EXPORTAÇÕES ---
 module.exports = {
-  docSorteio,
-  docControle,
-  docInventario,
-  docCraft,
-  docComprasVendas,
+  sheets,
   flushDocCache,
   getPlayerTokenCount,
   spendPlayerTokens,

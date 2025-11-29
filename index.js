@@ -3,7 +3,7 @@ require('dotenv').config();
 const { loadChannelRules } = require('./utils/channelGuard.js'); // +++ IMPORTA O GUARD +++
 const { handleRollemMessage } = require('./utils/rollemListener.js'); // <<< NOVO: Importa o escutador
 const rollObserver = require('./utils/rollObserver.js');
-const { preloadInventoryEmbedData, docCraft, flushDocCache } = require('./utils/google.js');
+const { preloadInventoryEmbedData, sheets, flushDocCache } = require('./utils/google.js');
 const { preloadItemCategories } = require('./utils/itemUtils.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -350,7 +350,7 @@ client.once(Events.ClientReady, async (bot) => {
   setInterval(refreshEmbedData, 15 * 60 * 1000); 
 
   // +++ CARREGA O CACHE DE ITENS (para /gasto, /transacao, etc.) +++
-  await preloadItemCategories(docCraft); //
+  await preloadItemCategories(sheets.docCraft); //
 
   // +++ FIM DA NOVA LÓGICA DE CACHE DE EMBED +++
 

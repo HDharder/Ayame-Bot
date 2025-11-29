@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlagsBitField, userMention } =
 
 // Importa as funções de utilitários que vamos usar
 const { getChannelOwner } = require('../utils/inventarioUtils.js'); //
-const { docInventario, docComprasVendas, getValuesFromSheet } = require('../utils/google.js'); //
+const { sheets, getValuesFromSheet } = require('../utils/google.js'); //
 const { checkChannelPermission } = require('../utils/channelGuard.js'); //
 const { fetchMesasJogadas, fetchP2PHistory } = require('../utils/exibirUtils.js'); //
 
@@ -90,8 +90,8 @@ module.exports = {
             'JOGADOR': characterRow.get('JOGADOR'), 
             'PERSONAGEM': characterRow.get('PERSONAGEM') 
         };
-        await docInventario.loadInfo(); //
-        const sheet = docInventario.sheetsByTitle['Inventário']; //
+        await sheets.docInventario.loadInfo(); //
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário']; //
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
 
         const result = await getValuesFromSheet(sheet, criteria, ['Gastos']); //
@@ -203,8 +203,8 @@ module.exports = {
         const userName = characterRow.get('JOGADOR');
 
         // 1. Buscar dados da planilha "Registro"
-        await docComprasVendas.loadInfo(); //
-        const sheet = docComprasVendas.sheetsByTitle['Registro']; //
+        await sheets.docComprasVendas.loadInfo(); //
+        const sheet = sheets.docComprasVendas.sheetsByTitle['Registro']; //
         if (!sheet) throw new Error("Aba 'Registro' não encontrada na planilha de Compras.");
 
         await sheet.loadHeaderRow(1);

@@ -1,6 +1,24 @@
 {
   "updates": [
     {
+      "version": "2.3.0",
+      "date": "2025-11-29",
+      "title": "Refatoração de Infraestrutura e Gestão de Memória (Anti-Memory Leak)",
+      "features": [
+        "**Estabilidade do Servidor:** Implementado um novo sistema de 'Ciclo de Vida' para as conexões com o Google Sheets. O bot agora recicla as conexões periodicamente, impedindo que o consumo de RAM cresça infinitamente até desligar o sistema.",
+        "**Melhoria de Performance:** Otimização dos processos de fundo para garantir que o bot se mantenha leve mesmo após dias de atividade contínua."
+      ],
+      "fixes": [
+        "Corrigido o vazamento de memória (Memory Leak) crítico no módulo `google-spreadsheet`, onde o cache de células e linhas acumulava-se na RAM a cada comando executado até estourar o limite do container (300MB)."
+      ],
+      "backend": [
+        "**Refatoração Crítica (Google Sheets):** O ficheiro `utils/google.js` foi reescrito para usar o padrão de 'Container' (`sheets` object) em vez de variáveis soltas. Isto resolve o problema de referências presas ('Reference Trap') nos comandos.",
+        "**Novo Sistema de Flush (`flushDocCache`):** Implementada uma função que recria as instâncias do `GoogleSpreadsheet` a cada hora, eliminando efetivamente o cache interno (`loadCells`) da memória.",
+        "**Garbage Collector Manual:** Atualizado o `package.json` com a flag `--expose-gc` e implementada a chamada `global.gc()` no `index.js`. Isto força o Node.js a libertar a memória 'lixo' identificada pelo sistema de Flush, essencial para ambientes limitados como o Discloud.",
+        "**Limpeza de Logs:** Removidos logs de debug (`console.log`) que estavam dentro de loops de iteração de células, reduzindo o uso desnecessário de CPU e I/O."
+      ]
+    },
+    {
       "version": "2.2.2",
       "date": "2025-11-12",
       "title": "Persistência de Estado (Anti-Crash) e Novo Sistema de Reações",

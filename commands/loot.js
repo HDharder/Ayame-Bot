@@ -17,7 +17,7 @@ const {
 const { checkAuth, AuthLevels } = require('../utils/auth.js');
 
 // Importações de Lógica - Google e Cálculo
-const { docControle, docCraft, lookupIds, getPlayerTokenCount } = require('../utils/google.js');
+const { sheets, lookupIds, getPlayerTokenCount } = require('../utils/google.js');
 // Importações de Lógica - Utilitários de Itens
 const { validateItems, parseItemInput } = require('../utils/itemUtils.js');
 // Importações de Lógica - Utilitários de Seleção/Devolução de Player
@@ -107,7 +107,7 @@ module.exports = {
           naoRolarLoot: interaction.options.getBoolean('nao_rolar_loot') ?? false,
         };
 
-        const mesasAbertas = await findEligibleTables(interaction.user.username, docControle);
+        const mesasAbertas = await findEligibleTables(interaction.user.username, sheets.docControle);
 
         if (mesasAbertas.length === 0) {
           await interaction.editReply('Você não possui mesas registradas que estejam pendentes de finalização. Já usou o `/registrar-mesa` ?');
@@ -377,7 +377,7 @@ module.exports = {
 
       try {
         if (!isMisc) { 
-            const notFound = await validateItems(items, sheetName, docCraft);
+            const notFound = await validateItems(items, sheetName, sheets.docCraft);
             if (notFound.length > 0) {
               await interaction.followUp({
                 content: `**Erro:** Itens não encontrados em "${sheetName}":\n\`\`\`${notFound.join('\n')}\`\`\`\nCorrija e tente adicionar novamente.`,

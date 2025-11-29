@@ -8,8 +8,7 @@ const {
 
 // Importamos a lógica necessária do Google
 const {
-  docSorteio,
-  docControle,
+  sheets,
   lookupUsernames,
   incrementarContagem, // Mantém a importação
   getValuesFromSheet // <<< ADICIONA a nova função (embora não a usemos diretamente aqui na refatoração final)
@@ -63,8 +62,8 @@ module.exports = {
           await interaction.editReply('Nenhum jogador válido (menção encontrada ou tag direta) foi informado.');
           return;
       }
-      await docControle.loadInfo();
-      const sheetHistorico = docControle.sheetsByTitle['Historico'];
+      await sheets.docControle.loadInfo();
+      const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
       await sheetHistorico.loadHeaderRow();
       const rows = await sheetHistorico.getRows();
       const mesasAbertas = rows.filter(row =>
@@ -131,9 +130,9 @@ module.exports = {
         const todosJogadores = [...primarios, ...secundarios];
         const selectedMessageId = interaction.values[0];
 
-        await docSorteio.loadInfo();
+        await sheets.docSorteio.loadInfo();
         // <<< USA A NOVA ABA UNIFICADA >>>
-        const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+        const sheetPersonagens = sheets.docSorteio.sheetsByTitle['Personagens'];
 
         if (!sheetPersonagens) {
             throw new Error("Não foi possível encontrar a aba 'Personagens' na planilha de Sorteio.");
@@ -157,8 +156,8 @@ module.exports = {
         });
         // --- Fim da busca de dados ---
 
-        await docControle.loadInfo();
-        const sheetHistorico = docControle.sheetsByTitle['Historico'];
+        await sheets.docControle.loadInfo();
+        const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
         // Assume que o cabeçalho está na LINHA 1
         await sheetHistorico.loadHeaderRow(1); 
         const rowsHistorico = await sheetHistorico.getRows();

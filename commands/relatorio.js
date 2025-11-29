@@ -17,7 +17,7 @@ const {
 const { checkAuth, AuthLevels } = require('../utils/auth.js');
 
 // Importações de Lógica
-const { docControle, docCraft, lookupIds } = require('../utils/google.js');
+const { sheets, lookupIds } = require('../utils/google.js');
 const { validateItems, parseItemInput } = require('../utils/itemUtils.js');
 const {
   findEligibleTablesForRelatorio,
@@ -101,7 +101,7 @@ module.exports = {
           criterio: interaction.options.getString('criterio') || null,
         };
         
-        const mesasAbertas = await findEligibleTablesForRelatorio(interaction.user.id, interaction.user.username, isStaff, docControle);
+        const mesasAbertas = await findEligibleTablesForRelatorio(interaction.user.id, interaction.user.username, isStaff, sheets.docControle);
         if (mesasAbertas.length === 0) {
           const msg = isStaff ? 'Nenhuma mesa registrada encontrada pendente de finalização.' : 'Você não possui mesas registradas pendentes de finalização.';
           await interaction.editReply(msg);
@@ -154,8 +154,8 @@ module.exports = {
           }
           const selectedMessageId = interaction.values[0]; 
 
-          await docControle.loadInfo();
-          const sheetHistorico = docControle.sheetsByTitle['Historico'];
+          await sheets.docControle.loadInfo();
+          const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
           if (!sheetHistorico) throw new Error("Aba 'Historico' não encontrada.");
           await sheetHistorico.loadHeaderRow(1);
           const rows = await sheetHistorico.getRows();
@@ -238,7 +238,7 @@ module.exports = {
               // --- Pula direto para a finalização (sem drops E ignorando loot) ---
               await interaction.editReply({ content: "Mesa selecionada. Gerando relatório final...", components: [] }); 
               
-              await handleRelatorioFinalization(state, docControle, interaction.client); 
+              await handleRelatorioFinalization(state, sheets.docControle, interaction.client); 
 
               interaction.client.pendingRelatorios.delete(originalInteractionId); 
               await interaction.followUp({ content: 'Relatório gerado e mesa finalizada com sucesso (sem drops inputados)!', flags: [MessageFlagsBitField.Flags.Ephemeral] }); 
@@ -288,7 +288,7 @@ module.exports = {
 
       try {
         if (!skipValidation) { 
-            const notFound = await validateItems(items, sheetName, docCraft); 
+            const notFound = await validateItems(items, sheetName, sheets.docCraft); 
             if (notFound.length > 0) { 
               await interaction.followUp({ content: `**Erro:** Itens não encontrados em "${sheetName}":\n\`\`\`${notFound.join('\n')}\`\`\`\nCorrija e tente adicionar novamente.`, flags: [MessageFlagsBitField.Flags.Ephemeral] }); 
               return;
@@ -509,7 +509,7 @@ module.exports = {
                 // --- FINALIZAÇÃO: Todos os jogadores processados ---
                 await interaction.editReply({ content: "Todos os drops inputados. Gerando relatório final...", components: [] }); 
 
-                await handleRelatorioFinalization(state, docControle, interaction.client); 
+                await handleRelatorioFinalization(state, sheets.docControle, interaction.client); 
 
                 interaction.client.pendingRelatorios.delete(originalInteractionId); 
                 await interaction.followUp({ content: 'Relatório gerado e mesa finalizada com sucesso!', flags: [MessageFlagsBitField.Flags.Ephemeral] }); 
