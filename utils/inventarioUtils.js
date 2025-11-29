@@ -40,7 +40,7 @@ async function getChannelOwner(channelId) {
     if (!channelId) return null;
     try {
         await sheets.sheets.docInventario.loadInfo();
-        const sheet = sheets.sheets.docInventario.sheetsByTitle['Inventário'];
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1);
         
@@ -118,7 +118,7 @@ async function registerChannel(selectedCharacterRow, allPlayerCharacters, channe
         const selectedCharName = selectedCharacterRow.get('PERSONAGEM');
 
         await sheets.sheets.docInventario.loadInfo(); // Garante que as abas estão carregadas
-        const sheet = sheets.sheets.docInventario.sheetsByTitle['Inventário']; // Define 'sheet' corretamente
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário']; // Define 'sheet' corretamente
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada em registerChannel.");
         
         const playerRows = allPlayerCharacters; // Usa a lista que recebemos
