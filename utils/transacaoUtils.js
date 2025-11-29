@@ -189,11 +189,10 @@ async function handlePlayerShop(interaction, state) {
  */
 async function buildPaginatedShopMenu(state, page = 0) {
     const { tipoDeLojaLimpo, interactionId, shopFilter, subLojaNome, persuasionSuccess } = state;
-    await sheets.docComprasVendas.loadInfo(); //
+    await sheets.docComprasVendas.loadInfo(); 
     const sheet = sheets.docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     if (!sheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
 
-    // +++ INÍCIO DA CORREÇÃO (CACHE DE LEITURA) +++
     let allRows;
     if (!state.shopRowsCache) {
         console.log(`[ShopCache] Cache de COMPRA (state.shopRowsCache) vazio. Buscando...`);
@@ -201,9 +200,7 @@ async function buildPaginatedShopMenu(state, page = 0) {
         state.shopRowsCache = await sheet.getRows();
     }
     allRows = state.shopRowsCache;
-    // +++ FIM DA CORREÇÃO +++
 
-    // +++ 2. FILTRO DE SUB-LOJA +++
     let baseRows = allRows;
     if (subLojaNome) {
         baseRows = allRows.filter(row => 
@@ -211,49 +208,48 @@ async function buildPaginatedShopMenu(state, page = 0) {
         );
     }
 
-    // +++ 2. Lógica de Filtragem (Compra) - AGORA USA O MANAGER +++
     const keywords = shopFilter || [];
-    const filteredRows = applyTextFilter(baseRows, keywords, (item) => item.get('Item')); //
+    const filteredRows = applyTextFilter(baseRows, keywords, (item) => item.get('Item')); 
 
-    const ITEMS_PER_PAGE = 25; // Limite de opções de um Select Menu
+    const ITEMS_PER_PAGE = 25; 
     const options = [];
 
-    // Move o botão de finalizar para cima, para podermos desabilitá-lo
-    // +++ LÓGICA DE PREÇO (Persuasão) +++
-    const priceCol = persuasionSuccess ? 'Preço (cd)' : 'Preço'; //
+    const priceCol = persuasionSuccess ? 'Preço (cd)' : 'Preço'; 
     const priceLabel = persuasionSuccess ? 'Preço (CD)' : 'Preço';
     
-    for (const row of filteredRows) {
+    // +++ CORREÇÃO DE DUPLICATAS: Usamos forEach com índice 'i' +++
+    filteredRows.forEach((row, i) => {
         const itemNome = row.get('Item');
         const itemPreco = parseFloat(row.get(priceCol)?.replace(',', '.')) || 0;
 
         let quant = 0;
-        let descricaoEstoque = "Estoque ilimitado"; // Padrão
+        let descricaoEstoque = "Estoque ilimitado"; 
         
-        // Se a loja tem [Estoque], só mostra itens com estoque > 0
         if (state.hasEstoque) {
             quant = parseInt(row.get('Estoque')) || 0;
-            if (quant <= 0) continue; // Pula o item se o estoque for 0
-            descricaoEstoque = `Em estoque: ${quant}`; // Texto pedido
+            if (quant <= 0) return; // return em forEach funciona como continue
+            descricaoEstoque = `Em estoque: ${quant}`;
         }
 
         if (itemNome && itemPreco > 0) {
+            // Cria um ID ÚNICO: Nome + Separador + Índice (ex: "Poção__15")
+            // Isso engana o Discord para aceitar nomes duplicados
+            const uniqueValue = `${itemNome.substring(0, 90)}__${i}`;
+
             options.push(
                 new StringSelectMenuOptionBuilder()
                     .setLabel(itemNome.substring(0, 100))
                     .setDescription(`${priceLabel}: ${itemPreco.toFixed(2)} PO | ${descricaoEstoque}`)
-                    // O 'value' será o nome exato para o modal dinâmico
-                    .setValue(itemNome.substring(0, 100)) 
+                    .setValue(uniqueValue) // USA O VALOR ÚNICO
             );
         }
-    }
+    });
 
-    // +++ LÓGICA DE PAGINAÇÃO +++
     const totalPages = Math.max(1, Math.ceil(options.length / ITEMS_PER_PAGE));
-    const safePage = Math.max(0, Math.min(page, totalPages - 1)); // Garante que a página é válida
+    const safePage = Math.max(0, Math.min(page, totalPages - 1)); 
     const startIndex = safePage * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
-    const itemsToShow = options.slice(startIndex, endIndex); // "Fatia" os itens para esta página
+    const itemsToShow = options.slice(startIndex, endIndex); 
 
     const finalizeButton = new ButtonBuilder()
         .setCustomId(`transacao_compra_finalizar|${interactionId}`)
@@ -261,15 +257,8 @@ async function buildPaginatedShopMenu(state, page = 0) {
         .setStyle(ButtonStyle.Success);
     
     const selectMenu = new StringSelectMenuBuilder()
-        // O CustomID agora inclui a página
         .setCustomId(`transacao_compra_select|${interactionId}|${safePage}`)
-        //.setPlaceholder(`Pág. ${safePage + 1}/${totalPages} (Selecione até ${MAX_MODAL_ITEMS} itens)`)
-        //.setMinValues(1)
-        //.setMaxValues(MAX_MODAL_ITEMS)
-        //.addOptions(itemsToShow);
     
-    // +++ CORREÇÃO: Declara os botões ANTES do bloco 'if' +++
-    // Botões de Paginação
     const prevButton = new ButtonBuilder()
         .setCustomId(`transacao_page_prev|${interactionId}|${safePage}`)
         .setLabel('◀️ Anterior')
@@ -282,29 +271,24 @@ async function buildPaginatedShopMenu(state, page = 0) {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(safePage + 1 >= totalPages);
 
-    // +++ 4. Adiciona o Botão de Filtro (AGORA USA O MANAGER) +++
-    const filterButton = buildFilterButton(`transacao_filtro_compra|${interactionId}`, safePage); //
+    const filterButton = buildFilterButton(`transacao_filtro_compra|${interactionId}`, safePage); 
 
-    // +++ ADICIONADO: Botão de Cancelar +++
     const cancelButton = new ButtonBuilder()
         .setCustomId(`transacao_cancelar_modal|${interactionId}`)
         .setLabel('Cancelar')
         .setStyle(ButtonStyle.Danger)
         .setEmoji('❌');
 
-    // Trata Menu Vazio
     if (itemsToShow.length === 0) {
-        // Usa 'options.length' para saber se o filtro falhou ou se a página está vazia
         const placeholder = (options.length === 0 && keywords.length > 0) 
             ? 'Nenhum item encontrado com este filtro' 
             : 'Não há itens nesta página';
         selectMenu.setPlaceholder(placeholder)
             .setMinValues(1)
-            .setMaxValues(1) // Requerido pelo setDisabled
+            .setMaxValues(1)
             .addOptions(new StringSelectMenuOptionBuilder().setLabel('placeholder').setValue('placeholder').setDescription('placeholder'))
             .setDisabled(true);
-        finalizeButton.setDisabled(true); // Desabilita Finalizar se não há o que selecionar
-    // +++ ADICIONADO: Também desabilita a paginação se não houver itens +++
+        finalizeButton.setDisabled(true); 
         prevButton.setDisabled(true);
         nextButton.setDisabled(true);
     } else {
@@ -313,22 +297,6 @@ async function buildPaginatedShopMenu(state, page = 0) {
             .setMaxValues(Math.min(itemsToShow.length, MAX_MODAL_ITEMS))
             .addOptions(itemsToShow);
     }
-
-    // Botões de Paginação
-    /*const prevButton = new ButtonBuilder()
-        .setCustomId(`transacao_page_prev|${interactionId}|${safePage}`)
-        .setLabel('◀️ Anterior')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(safePage === 0);
-
-    const nextButton = new ButtonBuilder()
-        .setCustomId(`transacao_page_next|${interactionId}|${safePage}`)
-        .setLabel('Próxima ▶️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(safePage + 1 >= totalPages);
-
-    // +++ 4. Adiciona o Botão de Filtro +++
-    const filterButton = buildFilterButton(`transacao_filtro_compra|${interactionId}`, safePage); */
 
     const filterText = keywords.length > 0 ? `\n**Filtro Ativo:** \`${formatFilterToString(keywords)}\`` : '';
     const content = `Selecione os itens que deseja comprar da loja **${tipoDeLojaLimpo}**.\n` +
@@ -351,35 +319,29 @@ async function buildPaginatedShopMenu(state, page = 0) {
  * @param {object} state - O estado da transação.
  */
 async function processCompra(interaction, state) {
-    await interaction.deferUpdate(); //
+    await interaction.deferUpdate(); 
 
     try {
-        if (state.shopMessageId) { //
+        if (state.shopMessageId) { 
             await interaction.channel.messages.edit(state.shopMessageId, { content: 'Processando sua compra... ⏳', components: [] });
-        } else {
-            throw new Error("state.shopMessageId não foi definido. A mensagem do menu não pôde ser editada.");
         }
     } catch (e) {
-        console.warn(`[WARN processCompra] Falha ao editar a msg do menu para "Processando": ${e.message}`);
+        console.warn(`[WARN processCompra] Falha ao editar a msg do menu: ${e.message}`);
     }
 
-    const { character, tipoDeLojaLimpo, hasEstoque, isCaravana, selectedItems, shopMessageId, subLojaNome, persuasionSuccess } = state; // <<< Puxa o subLojaNome
-    const playerRow = character.row; // A linha da planilha Inventário
+    const { character, tipoDeLojaLimpo, hasEstoque, isCaravana, selectedItems, subLojaNome, persuasionSuccess } = state; 
+    const playerRow = character.row; 
 
-    // +++ CORREÇÃO: Fecha a brecha de rolagem (se houver) +++
     await closeRollBrecha(interaction.client, interaction.channel.id, playerRow.get('JOGADOR'));
-
     
-    await sheets.docComprasVendas.loadInfo(); //
+    await sheets.docComprasVendas.loadInfo(); 
     const shopSheet = sheets.docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     const logSheet = sheets.docComprasVendas.sheetsByTitle['Registro'];
-    if (!shopSheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada na planilha de Compras.`);
-    if (!logSheet) throw new Error("Aba 'Registro' não encontrada na planilha de Compras.");
+    if (!shopSheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
     
     await shopSheet.loadHeaderRow(1);
     const shopRows = await shopSheet.getRows();
     
-    // +++ FILTRO DE SUB-LOJA (para Compra) +++
     let baseShopRows = shopRows;
     if (subLojaNome) {
         baseShopRows = shopRows.filter(row =>
@@ -390,67 +352,65 @@ async function processCompra(interaction, state) {
     const priceCol = persuasionSuccess ? 'Preço (cd)' : 'Preço';
 
     const shopItemsMap = new Map();
-    baseShopRows.forEach(r => shopItemsMap.set(r.get('Item'), r)); // Mapeia itens da loja pelo nome
+    // Usa toLowerCase para garantir match insensível a maiúsculas
+    baseShopRows.forEach(r => shopItemsMap.set(String(r.get('Item')).toLowerCase(), r)); 
 
     let totalCost = 0;
     const itemsToBuy = [];
-    const itemsToLog_Registro = []; // <<< NOVO: Para o log detalhado
-    const itemsToLog_Caravana = []; // <<< NOVO: Para a caravana (sem preço)
+    const itemsToLog_Registro = []; 
+    const itemsToLog_Caravana = []; 
     const errors = [];
-    const warnings = []; // <<< NOVO: Para avisos de estoque
-    const shopRowsToSave = []; // <<< NOVO: Para salvar o novo estoque
+    const warnings = []; 
+    const shopRowsToSave = []; 
 
-    // +++ CORREÇÃO: Itera pelo 'selectedItems' (que guardámos no state) +++
-    // em vez de iterar pelos 'components' do modal.
     for (const item of selectedItems) {
-        const itemName = item.value; // O 'customId' do campo do modal
+        const itemUniqueValue = item.value; // Ex: "Poção__15"
         
-        // Busca o valor do campo de texto usando o seu customId
-        const quantityString = interaction.fields.getTextInputValue(itemName);
+        // +++ RECUPERA O NOME REAL +++
+        // Remove o sufixo "__Index" para buscar na planilha e exibir
+        const realItemName = itemUniqueValue.split('__')[0]; 
+        
+        // O Modal usa o ID único (com o __Index) para identificar o campo de texto
+        const quantityString = interaction.fields.getTextInputValue(itemUniqueValue);
         let quantity = parseInt(quantityString);
+        
         if (isNaN(quantity) || quantity <= 0) {
-            errors.push(`Quantidade inválida para ${itemName}.`);
+            errors.push(`Quantidade inválida para ${realItemName}.`);
             continue;
         }
 
-        const shopItem = shopItemsMap.get(itemName);
+        const shopItem = shopItemsMap.get(realItemName.toLowerCase());
         if (!shopItem) {
-            errors.push(`Item ${itemName} não encontrado na loja (pode ter sido removido).`);
+            errors.push(`Item ${realItemName} não encontrado na loja.`);
             continue;
         }
 
         const price = parseFloat(shopItem.get(priceCol)?.replace(',', '.')) || 0;
         
-        // Validação de Estoque
         if (hasEstoque) {
             const stock = parseInt(shopItem.get('Estoque')) || 0;
             if (quantity > stock) {
-                warnings.push(`Estoque de ${itemName} insuficiente (Disponível: ${stock}, Pedido: ${quantity}). **Você pegou apenas ${stock}.**`);
-                quantity = stock; // Pega o máximo disponível
+                warnings.push(`Estoque de ${realItemName} insuficiente (Disp: ${stock}, Pedido: ${quantity}). **Pegou ${stock}.**`);
+                quantity = stock; 
             }
-
             const newStock = stock - quantity;
-            shopItem.set('Estoque', newStock); // Define o novo valor na linha
-            shopRowsToSave.push(shopItem); // Adiciona a linha para ser salva
-
-            // (Aqui chamaremos a 'batchUpdateStock' no futuro)
+            shopItem.set('Estoque', newStock); 
+            shopRowsToSave.push(shopItem); 
         }
 
-        // Se a quantidade (após verificação de estoque) for 0, pula o item
         if (quantity === 0) continue;
 
         totalCost += (price * quantity);
         itemsToBuy.push({
-            name: itemName,
-            validationName: itemName.split('[')[0].trim(), //
+            name: realItemName, // Usa o nome real (limpo)
+            validationName: realItemName.split('[')[0].trim(), 
             amount: quantity
         });
-        itemsToLog_Caravana.push(`${quantity}x ${itemName}`);
-        itemsToLog_Registro.push(`${quantity}x ${itemName} (${price.toFixed(2).replace('.', ',')} PO/un)`); // <<< MUDANÇA: Adiciona vírgula
+        itemsToLog_Caravana.push(`${quantity}x ${realItemName}`);
+        itemsToLog_Registro.push(`${quantity}x ${realItemName} (${price.toFixed(2).replace('.', ',')} PO/un)`); 
     }
 
-    // Validação de Ouro
-    const playerGold = parseFloat(playerRow.get('Total')) || 0; //
+    const playerGold = parseFloat(playerRow.get('Total')) || 0; 
     if (totalCost > playerGold) {
         errors.push(`Você não tem ouro suficiente (Necessário: ${totalCost.toFixed(2)} PO, Possui: ${playerGold.toFixed(2)} PO).`);
     }
@@ -460,53 +420,34 @@ async function processCompra(interaction, state) {
         return;
     }
     
-    // --- SUCESSO - Processar Transação ---
+    // --- SUCESSO ---
     const playerPayload = {
         username: playerRow.get('JOGADOR'),
         characterName: playerRow.get('PERSONAGEM'),
         changes: {}
     };
 
-    // 1. Remover Ouro do Jogador
-    //
     const goldRemovePayload = [{ ...playerPayload, changes: { gold: totalCost } }];
     const removeSuccess = await batchRemoveInventories(goldRemovePayload, interaction.client);
     
-    // 2. Adicionar Itens
     let addSuccess = true;
     if (isCaravana) {
-        // Lógica da Caravana
         const caravanSheet = sheets.docComprasVendas.sheetsByTitle['Caravana Bastião'];
-        if (!caravanSheet) throw new Error("Aba 'Caravana Bastião' não encontrada na planilha de Compras.");
-        const dataCompra = getFormattedTimestamp(); // <<< USA A NOVA FUNÇÃO
-        
-        let previsao = "Data (H1) não encontrada"; //
+        const dataCompra = new Date().toLocaleDateString('pt-BR');
+        let previsao = "Erro data"; 
 
         try {
-            // 1. Carrega a célula H1 (onde está a data base)
             await caravanSheet.loadCells('H1');
             const cellH1 = caravanSheet.getCellByA1('H1');
-            const dataBaseString = cellH1.formattedValue; // Pega a data formatada (ex: "05/11/2025")
-
+            const dataBaseString = cellH1.formattedValue; 
             if (dataBaseString) {
-                // 2. Parseia a data "dd/mm/aaaa"
                 let [dia, mes, ano] = dataBaseString.split('/');
-
-                // +++ CORREÇÃO: Força o ano para 4 dígitos (assume 20xx) +++
-                if (ano.length === 2) {
-                    ano = `20${ano}`;
-                }
-                const dataBase = new Date(ano, mes - 1, dia); // Agora: new Date(2025, 10, 3)
-
-                // 3. Adiciona 7 dias
-                //dataBase.setDate(dataBase.getDate() + 7);
-
-                // 4. Formata de volta para "dd/mm/aaaa"
-                previsao = dataBase.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                if (ano.length === 2) ano = `20${ano}`;
+                const dataBase = new Date(ano, mes - 1, dia); 
+                previsao = dataBase.toLocaleDateString('pt-BR');
             }
         } catch (dateError) {
-            console.error("[ERRO processCompra] Falha ao calcular data da caravana (H1):", dateError);
-            previsao = "Erro ao calcular data";
+            console.error("[ERRO processCompra] Data caravana:", dateError);
         }
         
         await caravanSheet.addRow({
@@ -517,56 +458,46 @@ async function processCompra(interaction, state) {
             'Previsão de chegada': previsao
         });
     } else {
-        // Adiciona direto ao inventário
-        //
         const itemAddPayload = [{ ...playerPayload, changes: { itemsToAdd: itemsToBuy } }];
         addSuccess = await batchUpdateInventories(itemAddPayload, interaction.client);
     }
     
-    // 3. Registrar Log
-    const dataLog = getFormattedTimestamp(); // <<< USA A NOVA FUNÇÃO
+    const dataLog = new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' });
     await logSheet.addRow({
         'Jogador': playerRow.get('JOGADOR'),
         'Personagem': playerRow.get('PERSONAGEM'),
         'Data': dataLog,
         'Local': tipoDeLojaLimpo,
         'Tipo': 'Compra',
-        'Total': totalCost.toFixed(2).replace('.', ','), // <<< MUDANÇA: Adiciona vírgula
-        'Transação': itemsToLog_Registro.join(', ') // <<< MUDANÇA: Usa a string detalhada
+        'Total': totalCost.toFixed(2).replace('.', ','), 
+        'Transação': itemsToLog_Registro.join(', ') 
     });
 
-    // 4. Salvar o Estoque (SÓ SE a transação foi bem-sucedida)
     if (hasEstoque && shopRowsToSave.length > 0) {
-        console.log(`[INFO processCompra] Atualizando estoque para ${shopRowsToSave.length} itens...`);
         try {
             for (const rowToSave of shopRowsToSave) {
-                await saveRow(rowToSave); // +++ CORREÇÃO (BUG 3): Usa a fila
-                // await delay(1000); // Delay para não sobrecarregar a API
+                await saveRow(rowToSave); 
             }
         } catch (stockError) {
-            console.error("[ERRO processCompra] Falha ao salvar novo estoque:", stockError);
-            // Não falha a transação inteira, mas avisa o staff
-            await interaction.followUp({ content: 'AVISO DE STAFF: A compra foi concluída, mas falhei ao atualizar o estoque da loja. Verifique a planilha.', ephemeral: true });
+            console.error("[ERRO processCompra] Falha estoque:", stockError);
         }
     }
     
     if (removeSuccess && addSuccess) {
         let successMessageContent = `Compra de ${userMention(interaction.user.id)} (`+
             `${playerRow.get('PERSONAGEM')}) finalizada com sucesso!\n\n` +
-            `**Total Gasto:** ${totalCost.toFixed(2).replace('.', ',')} PO\n` + // <<< MUDANÇA: Adiciona vírgula
-            `**Itens Comprados:**\n• ${itemsToLog_Registro.join('\n• ')}\n\n` + // <<< MUDANÇA: Usa a string detalhada
-            (isCaravana ? `*Seus itens foram enviados para a Caravana e chegarão em breve!*` : `*Seu inventário foi atualizado.*`);
+            `**Total Gasto:** ${totalCost.toFixed(2).replace('.', ',')} PO\n` + 
+            `**Itens Comprados:**\n• ${itemsToLog_Registro.join('\n• ')}\n\n` + 
+            (isCaravana ? `*Seus itens foram enviados para a Caravana!*` : `*Seu inventário foi atualizado.*`);
 
         if (warnings.length > 0) {
             successMessageContent += `\n\n**Avisos:**\n• ${warnings.join('\n• ')}`;
         }
 
         await interaction.channel.send({ content: successMessageContent });
-        // +++ CORREÇÃO: Apaga a mensagem usando o ID guardado no state +++
-        if (shopMessageId) await interaction.channel.messages.delete(shopMessageId).catch(e => console.warn(`[WARN processCompra] Falha ao apagar msg do menu da loja: ${e.message}`));
+        if (state.shopMessageId) await interaction.channel.messages.delete(state.shopMessageId).catch(()=>{});
     } else {
-         await interaction.channel.send({ content: `Compra processada para ${userMention(interaction.user.id)}, mas ocorreu um erro ao atualizar seu inventário na planilha. Avise um Staff.` });
-         if (shopMessageId) await interaction.channel.messages.delete(shopMessageId).catch(e => console.warn(`[WARN processCompra] Falha ao apagar msg do menu da loja: ${e.message}`));
+         await interaction.channel.send({ content: `Erro ao atualizar inventário. Avise um Staff.` });
     }
 }
 

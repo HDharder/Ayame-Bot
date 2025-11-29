@@ -9,13 +9,15 @@
         "**Melhoria de Performance:** Otimização dos processos de fundo para garantir que o bot se mantenha leve mesmo após dias de atividade contínua."
       ],
       "fixes": [
-        "Corrigido o vazamento de memória (Memory Leak) crítico no módulo `google-spreadsheet`, onde o cache de células e linhas acumulava-se na RAM a cada comando executado até estourar o limite do container (300MB)."
+        "**Correção Crítica (Memory Leak):** Corrigido o vazamento de memória no módulo `google-spreadsheet`, onde o cache de células acumulava-se na RAM até estourar o limite do container.",
+        "**Correção Crítica (Menu de Loja):** Corrigido o erro `Invalid Form Body` que ocorria em lojas com itens duplicados (ex: Página 7). Implementada lógica de IDs únicos (`Item__Index`) para permitir duplicatas visuais nos menus.",
+        "Corrigido um erro de referência (`TypeError: docInventario`) que impedia o funcionamento do comando `/inventario` e a validação de donos de canal."
       ],
       "backend": [
-        "**Refatoração Crítica (Google Sheets):** O ficheiro `utils/google.js` foi reescrito para usar o padrão de 'Container' (`sheets` object) em vez de variáveis soltas. Isto resolve o problema de referências presas ('Reference Trap') nos comandos.",
-        "**Novo Sistema de Flush (`flushDocCache`):** Implementada uma função que recria as instâncias do `GoogleSpreadsheet` a cada hora, eliminando efetivamente o cache interno (`loadCells`) da memória.",
-        "**Garbage Collector Manual:** Atualizado o `package.json` com a flag `--expose-gc` e implementada a chamada `global.gc()` no `index.js`. Isto força o Node.js a libertar a memória 'lixo' identificada pelo sistema de Flush, essencial para ambientes limitados como o Discloud.",
-        "**Limpeza de Logs:** Removidos logs de debug (`console.log`) que estavam dentro de loops de iteração de células, reduzindo o uso desnecessário de CPU e I/O."
+        "**Refatoração Crítica (Google Sheets):** O ficheiro `utils/google.js` foi reescrito para usar o padrão de 'Container' (`sheets` object).",
+        "**Novo Sistema de Flush (`flushDocCache`):** Implementada recriação periódica das instâncias da planilha para limpar a RAM.",
+        "**Garbage Collector Manual:** Implementada a chamada `global.gc()` (com a flag `--expose-gc`) para forçar a limpeza de memória em ambientes limitados.",
+        "**Refatoração de Menus:** Os utilitários de construção de menus (`buildPaginatedShopMenu`) foram atualizados para suportar chaves únicas compostas, evitando conflitos de API do Discord."
       ]
     },
     {
