@@ -1,6 +1,6 @@
 // Funções de cálculo de gold e lógica de tiers/dados
 
-const { docSorteio } = require('./google.js'); // docSorteio ainda é usado para getPlayerLevels
+const { sheets } = require('./google.js'); // docSorteio ainda é usado para getPlayerLevels
 
 // --- Funções de Utilidade ---
 

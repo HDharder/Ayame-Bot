@@ -1,6 +1,6 @@
 // utils/relatorioUtils.js
 const { userMention, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { docControle, incrementarMesasMestradas } = require('./google.js');
+const { sheets, incrementarMesasMestradas } = require('./google.js');
 const { getPlayerLevels, calculateGold } = require('./lootLogic.js'); // <<< IMPORTA LÓGICA DO LOOT
 const { batchUpdateInventories } = require('./inventoryManager.js'); // <<< IMPORTA GESTOR DE INVENTÁRIO
 const { formatPlayerList } = require('./lootUtils'); // Reutiliza formatPlayerList

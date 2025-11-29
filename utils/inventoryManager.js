@@ -1,5 +1,5 @@
 // utils/inventoryManager.js
-const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet, saveRow } = require('./google.js');
+const { sheets, getValuesFromSheet, setValuesInSheet, saveRow } = require('./google.js');
 const itemUtils = require('./itemUtils.js');
 const { buildInventoryEmbed } = require('./inventarioUtils.js');
 const { preloadInventoryEmbedData } = require('./google.js');
@@ -27,10 +27,10 @@ async function batchUpdateInventories(allPlayerChanges, client) {
             console.error("[ERRO BatchUpdate] O cache 'client.inventoryEmbedData' está nulo. Abortando atualização.");
             return false;
         }
-        await preloadItemCategories(docCraft);
+        await preloadItemCategories(sheets.docCraft);
         
-        await docInventario.loadInfo();
-        const sheet = docInventario.sheetsByTitle['Inventário'];
+        await sheets.docInventario.loadInfo();
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1); 
         const allRows = await sheet.getRows();
@@ -69,7 +69,7 @@ async function batchUpdateInventories(allPlayerChanges, client) {
             const itemChangesByCat = new Map(); // Map<CategoriaFinal, Array<ItemObject>>
             for (const item of itemsToAdd) {
                 // <<< CORRIGIDO: Usa item.validationName para buscar a categoria >>>
-                const category = await itemUtils.getItemCategory(item.validationName, docCraft); 
+                const category = await itemUtils.getItemCategory(item.validationName, sheets.docCraft); 
                 if (!category) {
                     console.error(`[ERRO BatchUpdate] Categoria não encontrada no cache para "${item.validationName}". Pulando item.`);
                     sheetUpdateSuccess = false;
@@ -187,10 +187,10 @@ async function batchRemoveInventories(allPlayerChanges, client) {
              console.error("[ERRO BatchRemove] Falha no preloadInventoryEmbedData. Abortando remoção de inventários.");
              return false; 
          }
-        await preloadItemCategories(docCraft); //
+        await preloadItemCategories(sheets.docCraft); //
         
-        await docInventario.loadInfo();
-        const sheet = docInventario.sheetsByTitle['Inventário'];
+        await sheets.docInventario.loadInfo();
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1); 
         const allRows = await sheet.getRows();
@@ -234,7 +234,7 @@ async function batchRemoveInventories(allPlayerChanges, client) {
             // --- Processa Itens (Subtração) ---
             const itemChangesByCat = new Map(); // Map<CategoriaFinal, Array<ItemObject>>
             for (const item of itemsToRemove) {
-                const category = await itemUtils.getItemCategory(item.validationName, docCraft); //
+                const category = await itemUtils.getItemCategory(item.validationName, sheets.docCraft); //
                 if (!category) {
                     console.error(`[ERRO BatchRemove] Categoria não encontrada no cache para "${item.validationName}". Pulando remoção de item.`);
                     sheetUpdateSuccess = false;

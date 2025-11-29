@@ -1,5 +1,5 @@
 // utils/transacaoUtils.js
-const { docSorteio, docControle, docComprasVendas, docInventario, docCraft, getValuesFromSheet, lookupIds, saveRow } = require('./google.js'); // +++ Importa saveRow
+const { sheets, getValuesFromSheet, lookupIds, saveRow } = require('./google.js'); // +++ Importa saveRow
 const { findUserCharacters, buildInventoryEmbed } = require('./inventarioUtils.js'); //
 const { batchUpdateInventories, batchRemoveInventories } = require('./inventoryManager.js'); //
 const { parseInventoryString, getItemCategory } = require('./itemUtils.js'); //
@@ -69,8 +69,8 @@ async function getMarketRules(channelId) {
         return marketRulesCache.get(channelId);
     }*/
     
-    await docSorteio.loadInfo(); //
-    const sheet = docSorteio.sheetsByTitle['Player ID']; //
+    await sheets.docSorteio.loadInfo(); //
+    const sheet = sheets.docSorteio.sheetsByTitle['Player ID']; //
     if (!sheet) throw new Error("Aba 'Player ID' não encontrada.");
 
     await sheet.loadHeaderRow(1);
@@ -136,8 +136,8 @@ async function validateMarketChannel(interaction) {
  * @returns {Promise<boolean>}
  */
 async function validateMesaCheck(username, charName) {
-    await docControle.loadInfo(); //
-    const sheet = docControle.sheetsByTitle['Historico']; //
+    await sheets.docControle.loadInfo(); //
+    const sheet = sheets.docControle.sheetsByTitle['Historico']; //
     if (!sheet) throw new Error("Aba 'Historico' não encontrada.");
     
     await sheet.loadHeaderRow(1);
@@ -189,8 +189,8 @@ async function handlePlayerShop(interaction, state) {
  */
 async function buildPaginatedShopMenu(state, page = 0) {
     const { tipoDeLojaLimpo, interactionId, shopFilter, subLojaNome, persuasionSuccess } = state;
-    await docComprasVendas.loadInfo(); //
-    const sheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
+    await sheets.docComprasVendas.loadInfo(); //
+    const sheet = sheets.docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     if (!sheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
 
     // +++ INÍCIO DA CORREÇÃO (CACHE DE LEITURA) +++
@@ -370,9 +370,9 @@ async function processCompra(interaction, state) {
     await closeRollBrecha(interaction.client, interaction.channel.id, playerRow.get('JOGADOR'));
 
     
-    await docComprasVendas.loadInfo(); //
-    const shopSheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
-    const logSheet = docComprasVendas.sheetsByTitle['Registro'];
+    await sheets.docComprasVendas.loadInfo(); //
+    const shopSheet = sheets.docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
+    const logSheet = sheets.docComprasVendas.sheetsByTitle['Registro'];
     if (!shopSheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada na planilha de Compras.`);
     if (!logSheet) throw new Error("Aba 'Registro' não encontrada na planilha de Compras.");
     
@@ -476,7 +476,7 @@ async function processCompra(interaction, state) {
     let addSuccess = true;
     if (isCaravana) {
         // Lógica da Caravana
-        const caravanSheet = docComprasVendas.sheetsByTitle['Caravana Bastião'];
+        const caravanSheet = sheets.docComprasVendas.sheetsByTitle['Caravana Bastião'];
         if (!caravanSheet) throw new Error("Aba 'Caravana Bastião' não encontrada na planilha de Compras.");
         const dataCompra = getFormattedTimestamp(); // <<< USA A NOVA FUNÇÃO
         
@@ -619,10 +619,10 @@ async function cacheSellPrices(categories) {
     }
 
     // 2. Carrega os dados
-    await docCraft.loadInfo(); //
+    await sheets.docCraft.loadInfo(); //
     for (const [sheetName, cols] of sheetsToFetch.entries()) {
         const { nameCol, priceCol } = cols;
-        const sheet = docCraft.sheetsByTitle[sheetName];
+        const sheet = sheets.docCraft.sheetsByTitle[sheetName];
         if (!sheet) {
             console.warn(`[cacheSellPrices] Aba de Craft "${sheetName}" não encontrada.`);
             continue;
@@ -710,8 +710,8 @@ async function buildSellSelectMenu(state, page = 0, price_adjust = false) {
     const allowedCategories = new Set(validSellRules.map(s => s.replace('*', '')));
     const starredCategories = new Set(validSellRules.filter(s => s.endsWith('*')).map(s => s.replace('*', '')));
 
-    await docComprasVendas.loadInfo(); //
-    const shopSheet = docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
+    await sheets.docComprasVendas.loadInfo(); //
+    const shopSheet = sheets.docComprasVendas.sheetsByTitle[tipoDeLojaLimpo];
     if (!shopSheet) throw new Error(`Aba da loja "${tipoDeLojaLimpo}" não encontrada.`);
     
     await shopSheet.loadHeaderRow(1);
@@ -994,8 +994,8 @@ async function processVenda(interaction, state) {
 
     // 4. Registrar Log
     try {
-        await docComprasVendas.loadInfo(); //
-        const logSheet = docComprasVendas.sheetsByTitle['Registro']; //
+        await sheets.docComprasVendas.loadInfo(); //
+        const logSheet = sheets.docComprasVendas.sheetsByTitle['Registro']; //
         const dataLog = new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 
         await logSheet.addRow({
@@ -1071,8 +1071,8 @@ async function openRollBrecha(interaction, state, shopMessageId) {
     // 1. Busca os "Termos" na planilha da loja
     let termos = [];
     try {
-        await docComprasVendas.loadInfo();
-        const shopSheet = docComprasVendas.sheetsByTitle[state.tipoDeLojaLimpo];
+        await sheets.docComprasVendas.loadInfo();
+        const shopSheet = sheets.docComprasVendas.sheetsByTitle[state.tipoDeLojaLimpo];
         if (shopSheet) {
             await shopSheet.loadHeaderRow(1);
             if (shopSheet.headerValues.includes('Termos')) {
@@ -1266,8 +1266,8 @@ async function handleP2PConfirmation(buttonInteraction, p2p_state) {
 
         // +++ REQUERIMENTO 3: Logar na planilha +++
         try {
-            await docComprasVendas.loadInfo();
-            const logSheet = docComprasVendas.sheetsByTitle[logSheetName];
+            await sheets.docComprasVendas.loadInfo();
+            const logSheet = sheets.docComprasVendas.sheetsByTitle[logSheetName];
             if (logSheet) {
                 await logSheet.addRow({
                     'Data': data,

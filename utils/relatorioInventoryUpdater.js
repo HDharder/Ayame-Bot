@@ -1,5 +1,5 @@
 // utils/relatorioInventoryUpdater.js
-const { docInventario, docCraft, getValuesFromSheet, setValuesInSheet } = require('./google.js');
+const { sheets, getValuesFromSheet, setValuesInSheet } = require('./google.js');
 const { parseInventoryString, formatInventoryString, getItemCategory } = require('./itemUtils.js'); // Reutilizamos os parsers de string
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -20,8 +20,8 @@ async function updateInventoryFromRelatorio(allPlayerChanges) {
 
             console.log(`[RelatorioUpdater] Processando: ${username} - ${characterName}`);
 
-            await docInventario.loadInfo();
-            const sheet = docInventario.sheetsByTitle['Inventário'];
+            await sheets.docInventario.loadInfo();
+            const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
             if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
             
             // 1. Critério para encontrar a linha do jogador
@@ -46,7 +46,7 @@ async function updateInventoryFromRelatorio(allPlayerChanges) {
                 for (const item of itemsToAdd) {
                     // item.validationName é o nome limpo (ex: "Arma +1")
                     // item.name é o nome completo (ex: "Arma +1 [Espada Longa]")
-                    const category = await getItemCategory(item.validationName, docCraft);
+                    const category = await getItemCategory(item.validationName, sheets.docCraft);
                     if (!category) {
                         console.warn(`[RelatorioUpdater] Categoria não encontrada para: ${item.validationName}`);
                         continue;

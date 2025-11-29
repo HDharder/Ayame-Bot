@@ -1,9 +1,9 @@
 // utils/inventarioUtils.js
 const { EmbedBuilder, codeBlock } = require('discord.js');
-// Importa a nova docInventario e as outras de que precisamos
+// Importa a nova sheets.sheets.docInventario e as outras de que precisamos
 // E importa as funções genéricas de manipulação de planilha
-//const { docInventario, docSorteio, getPlayerTokenCount, getValueFromSheet, setValueInSheet, clearValueInSheet } = require('./google.js');
-const { docInventario, docSorteio, docCraft, getPlayerTokenCount, getPlayerTokenCountFromData, getValuesFromSheet, setValuesInSheet, clearValuesInSheet } = require('./google.js');
+//const { sheets.sheets.docInventario, sheets.docSorteio, getPlayerTokenCount, getValueFromSheet, setValueInSheet, clearValueInSheet } = require('./google.js');
+const { sheets, getPlayerTokenCount, getPlayerTokenCountFromData, getValuesFromSheet, setValuesInSheet, clearValuesInSheet } = require('./google.js');
 
 /**
  * Busca todas as linhas de personagem de um jogador na aba "Inventário".
@@ -13,8 +13,8 @@ const { docInventario, docSorteio, docCraft, getPlayerTokenCount, getPlayerToken
 async function findUserCharacters(username) {
     if (!username) return [];
     try {
-        await docInventario.loadInfo();
-        const sheet = docInventario.sheetsByTitle['Inventário'];
+        await sheets.docInventario.loadInfo();
+        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1);
         const rows = await sheet.getRows();
@@ -39,8 +39,8 @@ async function findUserCharacters(username) {
 async function getChannelOwner(channelId) {
     if (!channelId) return null;
     try {
-        await docInventario.loadInfo();
-        const sheet = docInventario.sheetsByTitle['Inventário'];
+        await sheets.sheets.docInventario.loadInfo();
+        const sheet = sheets.sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1);
         
@@ -117,8 +117,8 @@ async function registerChannel(selectedCharacterRow, allPlayerCharacters, channe
         const username = selectedCharacterRow.get('JOGADOR'); //
         const selectedCharName = selectedCharacterRow.get('PERSONAGEM');
 
-        await docInventario.loadInfo(); // Garante que as abas estão carregadas
-        const sheet = docInventario.sheetsByTitle['Inventário']; // Define 'sheet' corretamente
+        await sheets.sheets.docInventario.loadInfo(); // Garante que as abas estão carregadas
+        const sheet = sheets.sheets.docInventario.sheetsByTitle['Inventário']; // Define 'sheet' corretamente
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada em registerChannel.");
         
         const playerRows = allPlayerCharacters; // Usa a lista que recebemos
@@ -209,9 +209,9 @@ async function getLevelProgress(characterRow) {
         const charName = characterRow.get('PERSONAGEM');
         const username = characterRow.get('JOGADOR');
 
-        await docSorteio.loadInfo();
-        const charSheet = docSorteio.sheetsByTitle['Personagens'];
-        const xpSheet = docSorteio.sheetsByTitle['Player ID'];
+        await sheets.docSorteio.loadInfo();
+        const charSheet = sheets.docSorteio.sheetsByTitle['Personagens'];
+        const xpSheet = sheets.docSorteio.sheetsByTitle['Player ID'];
         if (!charSheet || !xpSheet) throw new Error(`Abas Personagens ou Player ID não encontradas.`);
 
         // 1. Encontra o personagem

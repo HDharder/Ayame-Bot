@@ -1,5 +1,5 @@
 // utils/exibirUtils.js
-const { docControle, docSorteio, docComprasVendas } = require('./google.js'); //
+const { sheets } = require('./google.js'); //
 const { TIER_DATA } = require('./lootLogic.js'); //
 
 /**
@@ -96,8 +96,8 @@ function applyDobroLogic(baseGold, itemString, hasDobro) {
  * @returns {Promise<Array<object>>} - Um array de objetos de histórico.
  */
 async function fetchMesasJogadas(characterName) {
-    await docControle.loadInfo(); //
-    const sheet = docControle.sheetsByTitle['Historico']; //
+    await sheets.docControle.loadInfo(); //
+    const sheet = sheets.docControle.sheetsByTitle['Historico']; //
     if (!sheet) throw new Error("Aba 'Historico' não encontrada.");
     
     await sheet.loadHeaderRow(1);
@@ -186,8 +186,8 @@ async function fetchP2PHistory(characterName) {
 
     try {
         // --- 1. Encontrar quais abas são P2P ---
-        await docSorteio.loadInfo();
-        const sheetPlayerID = docSorteio.sheetsByTitle['Player ID'];
+        await sheets.docSorteio.loadInfo();
+        const sheetPlayerID = sheets.docSorteio.sheetsByTitle['Player ID'];
         if (!sheetPlayerID) throw new Error("Aba 'Player ID' não encontrada.");
         
         await sheetPlayerID.loadHeaderRow(1);
@@ -218,10 +218,10 @@ async function fetchP2PHistory(characterName) {
         }
 
         // --- 2. Buscar em cada aba P2P encontrada ---
-        await docComprasVendas.loadInfo();
+        await sheets.docComprasVendas.loadInfo();
 
         for (const sheetName of p2pSheetNames) {
-            const sheet = docComprasVendas.sheetsByTitle[sheetName];
+            const sheet = sheets.docComprasVendas.sheetsByTitle[sheetName];
             if (!sheet) {
                 console.warn(`[fetchP2PHistory] Aba P2P "${sheetName}" definida em 'Player ID' não foi encontrada em COMPRAS_VENDAS.`);
                 continue;

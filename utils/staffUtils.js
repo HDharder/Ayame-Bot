@@ -1,5 +1,5 @@
 // utils/staffUtils.js
-const { docSorteio, docControle, docComprasVendas, docInventario } = require('./google.js'); //
+const { sheets } = require('./google.js'); //
 const { batchUpdateInventories } = require('./inventoryManager.js'); //
 const { parseItemInput } = require('./itemUtils.js'); //
 //const { setValuesInSheet } = require('./google.js'); //
@@ -35,8 +35,8 @@ async function fetchServerStats() {
     
     try {
         // --- 1. Dados da "Personagens" (docSorteio) ---
-        await docSorteio.loadInfo(); //
-        const sheetChars = docSorteio.sheetsByTitle['Personagens']; //
+        await sheets.docSorteio.loadInfo(); //
+        const sheetChars = sheets.docSorteio.sheetsByTitle['Personagens']; //
         if (sheetChars) {
             await sheetChars.loadHeaderRow(2); // Header na linha 2
             const rows = await sheetChars.getRows();
@@ -72,8 +72,8 @@ async function fetchServerStats() {
  */
 async function fetchCaravanStatus() {
     try {
-        await docComprasVendas.loadInfo(); //
-        const sheet = docComprasVendas.sheetsByTitle['Caravana Bastião']; //
+        await sheets.docComprasVendas.loadInfo(); //
+        const sheet = sheets.docComprasVendas.sheetsByTitle['Caravana Bastião']; //
         if (!sheet) throw new Error("Aba 'Caravana Bastião' não encontrada.");
 
         await sheet.loadCells('H1:N1');
@@ -104,8 +104,8 @@ async function fetchCaravanStatus() {
  */
 async function processCaravanDistribution(client) {
     try {
-        await docComprasVendas.loadInfo(); //
-        const sheet = docComprasVendas.sheetsByTitle['Caravana Bastião']; //
+        await sheets.docComprasVendas.loadInfo(); //
+        const sheet = sheets.docComprasVendas.sheetsByTitle['Caravana Bastião']; //
         if (!sheet) throw new Error("Aba 'Caravana Bastião' não encontrada.");
 
         await sheet.loadHeaderRow(1);

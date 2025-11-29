@@ -1,4 +1,4 @@
-const { docSorteio } = require('./google.js');
+const { sheets } = require('./google.js');
 
 // O cache para armazenar as regras (CommandName -> {id, tipo})
 const channelRulesCache = new Map();
@@ -9,8 +9,8 @@ const channelRulesCache = new Map();
  */
 async function loadChannelRules() {
     try {
-        await docSorteio.loadInfo();
-        const sheet = docSorteio.sheetsByTitle['Player ID']; //
+        await sheets.docSorteio.loadInfo();
+        const sheet = sheets.docSorteio.sheetsByTitle['Player ID']; //
         if (!sheet) {
             console.error("[ERRO ChannelGuard] Aba 'Player ID' não encontrada.");
             return;

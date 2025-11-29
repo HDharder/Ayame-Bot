@@ -10,8 +10,7 @@ const {
 } = require('discord.js');
 
 const { 
-    docControle, 
-    docSorteio, 
+    sheets, 
     lookupIds, 
     getPlayerTokenCount, 
     spendPlayerTokens, 
@@ -157,8 +156,8 @@ function buildLootMessageContent(state, playersString, dropsString) {
  * AGORA USA 'nao_rolar_loot_com_vantagem'
  */
 async function handleLootCalculation(interaction, state, originalInteractionId) { 
-    await docControle.loadInfo();
-    const sheetHistorico = docControle.sheetsByTitle['Historico'];
+    await sheets.docControle.loadInfo();
+    const sheetHistorico = sheets.docControle.sheetsByTitle['Historico'];
     if (!sheetHistorico) throw new Error("Aba 'Historico' não encontrada.");
     await sheetHistorico.loadHeaderRow(1);
     const rows = await sheetHistorico.getRows();
@@ -425,8 +424,8 @@ async function handleEncerrarMesaClick(interaction, state, lootMessageId) {
     
     // 3. Adicionar MESA JOGADA extra para quem usou Dobro (Semana ATUAL)
     try {
-        await docSorteio.loadInfo(); 
-        const sheetPersonagens = docSorteio.sheetsByTitle['Personagens'];
+        await sheets.docSorteio.loadInfo(); 
+        const sheetPersonagens = sheets.docSorteio.sheetsByTitle['Personagens'];
         if (!sheetPersonagens) {
             throw new Error("Aba 'Personagens' não encontrada para buscar offset B1.");
         }
@@ -472,7 +471,7 @@ async function handleEncerrarMesaClick(interaction, state, lootMessageId) {
     }
 
     // 4. Atualizar planilha Histórico
-    await updateHistoricoSheet(state, docControle);
+    await updateHistoricoSheet(state, sheets.docControle);
 
     // 5. Formatar log
     const playersStringForLog = formatPlayerList(state.players, true, true);
