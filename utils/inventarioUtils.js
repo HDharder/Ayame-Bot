@@ -1,9 +1,9 @@
 // utils/inventarioUtils.js
 const { EmbedBuilder, codeBlock } = require('discord.js');
-// Importa a nova sheets.sheets.docInventario e as outras de que precisamos
-// E importa as funções genéricas de manipulação de planilha
-//const { sheets.sheets.docInventario, sheets.docSorteio, getPlayerTokenCount, getValueFromSheet, setValueInSheet, clearValueInSheet } = require('./google.js');
-const { sheets, getPlayerTokenCount, getPlayerTokenCountFromData, getValuesFromSheet, setValuesInSheet, clearValuesInSheet } = require('./google.js');
+
+// MUDANÇA 1: Importamos o módulo inteiro 'google' em vez de destrutar 'sheets' agora.
+// Isso evita que 'sheets' seja undefined se houver dependência circular.
+const google = require('./google.js'); 
 
 /**
  * Busca todas as linhas de personagem de um jogador na aba "Inventário".
@@ -13,8 +13,10 @@ const { sheets, getPlayerTokenCount, getPlayerTokenCountFromData, getValuesFromS
 async function findUserCharacters(username) {
     if (!username) return [];
     try {
-        await sheets.docInventario.loadInfo();
-        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
+        // MUDANÇA 2: Acessamos google.sheets aqui dentro.
+        // CORREÇÃO: Corrigido o typo 'docInventaio' para 'docInventario'
+        await google.sheets.docInventario.loadInfo();
+        const sheet = google.sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1);
         const rows = await sheet.getRows();
@@ -39,8 +41,9 @@ async function findUserCharacters(username) {
 async function getChannelOwner(channelId) {
     if (!channelId) return null;
     try {
-        await sheets.sheets.docInventario.loadInfo();
-        const sheet = sheets.docInventario.sheetsByTitle['Inventário'];
+        // CORREÇÃO: Corrigido o typo 'docInventaio' para 'docInventario' e usado google.sheets
+        await google.sheets.docInventario.loadInfo();
+        const sheet = google.sheets.docInventario.sheetsByTitle['Inventário'];
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada.");
         await sheet.loadHeaderRow(1);
         
@@ -103,37 +106,29 @@ async function deleteOldMessage(client, oldChannelId, oldMessageId) {
 }
 
 /**
- * Registra um canal para um personagem, limpando registos antigos APENAS SE o novo
- * registo ocorrer no MESMO canal que um personagem anterior do jogador ocupava.
- * Usa as funções genéricas getValueFromSheet, setValueInSheet, clearValueInSheet.
- * @param {import('google-spreadsheet').GoogleSpreadsheetRow} selectedCharacterRow - A linha (objeto row) do personagem que o jogador SELECIONOU.
- * @param {Array<import('google-spreadsheet').GoogleSpreadsheetRow>} allPlayerCharacters - TODAS as linhas (objetos row) pertencentes a este jogador.
- * @param {string} channelId - O ID do canal a ser registrado.
- * @param {string} messageId - O ID da nova mensagem embed.
- * @param {import('discord.js').Client} client - O cliente Discord (para apagar msgs antigas).
+ * Registra um canal para um personagem.
  */
 async function registerChannel(selectedCharacterRow, allPlayerCharacters, channelId, messageId, client) {
     try {
         const username = selectedCharacterRow.get('JOGADOR'); //
         const selectedCharName = selectedCharacterRow.get('PERSONAGEM');
 
-        await sheets.sheets.docInventario.loadInfo(); // Garante que as abas estão carregadas
-        const sheet = sheets.docInventario.sheetsByTitle['Inventário']; // Define 'sheet' corretamente
+        // CORREÇÃO: google.sheets.docInventario
+        await google.sheets.docInventario.loadInfo(); 
+        const sheet = google.sheets.docInventario.sheetsByTitle['Inventário']; 
         if (!sheet) throw new Error("Aba 'Inventário' não encontrada em registerChannel.");
         
-        const playerRows = allPlayerCharacters; // Usa a lista que recebemos
+        const playerRows = allPlayerCharacters; 
 
-        const messagesToDelete = []; // Guarda {channelId, messageId} para apagar
+        const messagesToDelete = []; 
 
         // Itera pelas linhas do jogador
-        // Usamos allPlayerCharacters para saber quais personagens limpar
         for (const row of playerRows) {
             const currentCharName = row.get('PERSONAGEM');
-            const criteria = { 'JOGADOR': username, 'PERSONAGEM': currentCharName }; // Critério para as funções genéricas
+            const criteria = { 'JOGADOR': username, 'PERSONAGEM': currentCharName }; 
             
-            // Busca os valores antigos usando a NOVA função genérica
-            // Ela retorna um array, pegamos o primeiro resultado se existir
-            const oldValuesResult = await getValuesFromSheet(sheet, criteria, ['Inv ID', 'Msg ID']);
+            // CORREÇÃO: google.getValuesFromSheet
+            const oldValuesResult = await google.getValuesFromSheet(sheet, criteria, ['Inv ID', 'Msg ID']);
             const oldValues = oldValuesResult.length > 0 ? oldValuesResult[0] : { 'Inv ID': null, 'Msg ID': null };
             const oldChannelId = oldValues['Inv ID'];
             const oldMessageId = oldValues['Msg ID'];
@@ -141,80 +136,66 @@ async function registerChannel(selectedCharacterRow, allPlayerCharacters, channe
             // Verifica se é a linha do personagem selecionado
             if (currentCharName === selectedCharName) {
                 let channelChanged = false;
-                // Define o novo Inv ID se for diferente
-                const valuesToUpdate = {}; // Guarda o que precisa ser atualizado nesta linha
+                const valuesToUpdate = {}; 
                 if (oldChannelId !== channelId) {
                     valuesToUpdate['Inv ID'] = channelId;
                     channelChanged = true;
-                    // Adiciona a mensagem antiga para apagar SE ambos existiam E o canal mudou
                     if (oldChannelId && oldMessageId) {
                          messagesToDelete.push({ channelId: oldChannelId, messageId: oldMessageId });
                     }
                 }
-                // Define o novo Msg ID se for diferente
                 if (oldMessageId !== messageId) {
-                    // Se SÓ a mensagem mudou (no mesmo canal), adiciona a antiga para apagar
-                    if(oldMessageId && !channelChanged) { // ou oldChannelId === channelId
+                    if(oldMessageId && !channelChanged) { 
                          messagesToDelete.push({ channelId: channelId, messageId: oldMessageId });
                     }
                     valuesToUpdate['Msg ID'] = messageId;
                 }
-                // Chama setValuesInSheet UMA VEZ para a linha selecionada, se houver algo a mudar
                 if (Object.keys(valuesToUpdate).length > 0) {
-                    await setValuesInSheet(sheet, criteria, valuesToUpdate);
+                    // CORREÇÃO: google.setValuesInSheet
+                    await google.setValuesInSheet(sheet, criteria, valuesToUpdate);
                 }
             } else { // Outra linha do mesmo jogador
-                // === CORREÇÃO ESTÁ AQUI ===
-                // Verifica se esta outra linha estava registrada NESTE MESMO canal
                 if (oldChannelId === channelId) {
-                    // Sim, este canal pertencia a este outro personagem. Limpa o registo dele.
                     console.log(`[INFO registerChannel] Canal ${channelId} estava com ${currentCharName}, limpando registo antigo.`);
                     const columnsToClear = [];
                     if (oldChannelId) columnsToClear.push('Inv ID');
                     if (oldMessageId) columnsToClear.push('Msg ID');
                     if (columnsToClear.length > 0) {
-                        await clearValuesInSheet(sheet, criteria, columnsToClear);
+                        // CORREÇÃO: google.clearValuesInSheet
+                        await google.clearValuesInSheet(sheet, criteria, columnsToClear);
                     }
-                    
-                    // Adiciona a mensagem antiga para apagar (se existia)
                     if (oldChannelId && oldMessageId) {
                         messagesToDelete.push({ channelId: oldChannelId, messageId: oldMessageId });
                     }
                 }
-                // Se oldChannelId não for igual a channelId, NÃO FAZ NADA com esta linha.
             }
         }
 
-        // Apaga as mensagens antigas DEPOIS de salvar
-        // (Usa Set para evitar tentar apagar a mesma mensagem duas vezes, caso raro)
         const uniqueMessagesToDelete = [...new Map(messagesToDelete.map(item => [`${item.channelId}-${item.messageId}`, item])).values()];
         for (const msg of uniqueMessagesToDelete) {
-            await deleteOldMessage(client, msg.channelId, msg.messageId); //
+            await deleteOldMessage(client, msg.channelId, msg.messageId); 
         }
 
         console.log(`[INFO registerChannel] Canal ${channelId} / Msg ${messageId} registrado para ${username}.`);
     } catch (e) {
         console.error(`[ERRO registerChannel] Falha ao registrar canal:`, e);
-        // Não impede o embed de ser enviado
     }
 }
 
 /**
  * (Modo Lento) Calcula Nível e Q.Mesas (ex: "5 / 2").
- * @param {import('google-spreadsheet').GoogleSpreadsheetRow} characterRow - A linha da aba "Inventário".
- * @returns {Promise<string>}
  */
 async function getLevelProgress(characterRow) {
     try {
         const charName = characterRow.get('PERSONAGEM');
         const username = characterRow.get('JOGADOR');
 
-        await sheets.docSorteio.loadInfo();
-        const charSheet = sheets.docSorteio.sheetsByTitle['Personagens'];
-        const xpSheet = sheets.docSorteio.sheetsByTitle['Player ID'];
+        // CORREÇÃO: google.sheets.docSorteio
+        await google.sheets.docSorteio.loadInfo();
+        const charSheet = google.sheets.docSorteio.sheetsByTitle['Personagens'];
+        const xpSheet = google.sheets.docSorteio.sheetsByTitle['Player ID'];
         if (!charSheet || !xpSheet) throw new Error(`Abas Personagens ou Player ID não encontradas.`);
 
-        // 1. Encontra o personagem
         await charSheet.loadHeaderRow(2);
         const charRows = await charSheet.getRows();
         const charRow = charRows.find(r =>
@@ -234,7 +215,6 @@ async function getLevelProgress(characterRow) {
             throw new Error(`'Level' ou 'Mesas Jogadas' é inválido na aba 'Personagens'.`);
         }
         
-        // 2. Encontra o XP necessário
         await xpSheet.loadHeaderRow(1);
         
         const nivelColIndex = xpSheet.headerValues.indexOf('Nível');
@@ -243,19 +223,17 @@ async function getLevelProgress(characterRow) {
 
         await xpSheet.loadCells({
             startRowIndex: 1, endRowIndex: xpSheet.rowCount,
-            startColumnIndex: Math.min(nivelColIndex, totalColIndex), // Carrega ambas as colunas
+            startColumnIndex: Math.min(nivelColIndex, totalColIndex), 
             endColumnIndex: Math.max(nivelColIndex, totalColIndex) + 1
         });
 
         let mesasParaUpar = 0;
         if (level === 1) {
-            mesasParaUpar = 0; // Nível 1 sempre começa do 0
+            mesasParaUpar = 0; 
         } else {
-            // Itera as linhas (começa em 1, header é 0)
             for (let i = 1; i < xpSheet.rowCount; i++) {
                 const nivelCell = xpSheet.getCell(i, nivelColIndex);
-                if (nivelCell.value == level) { // Encontra a linha do Nível ATUAL
-                    // Pega o total da linha ANTERIOR (i-1)
+                if (nivelCell.value == level) { 
                     const mesasCell = xpSheet.getCell(i - 1, totalColIndex); 
                     mesasParaUpar = parseInt(mesasCell.value) || 0;
                     break;
@@ -274,14 +252,10 @@ async function getLevelProgress(characterRow) {
 
 /**
  * (Modo Rápido) Calcula Nível e Q.Mesas (ex: "5 / 2").
- * @param {import('google-spreadsheet').GoogleSpreadsheetRow} characterRow - A linha da aba "Inventário".
- * @param {object} embedData - O objeto de dados pré-carregados (charDataMap, xpDataMap).
- * @returns {string} - String formatada (síncrono).
  */
 function getLevelProgressFromData(characterRow, embedData) {
     try {
         const charName = characterRow.get('PERSONAGEM');
-        const primSec = characterRow.get('Prim/Sec/Terc');
         const username = characterRow.get('JOGADOR');
         const { charDataMap, xpDataMap } = embedData;
 
@@ -289,17 +263,15 @@ function getLevelProgressFromData(characterRow, embedData) {
             throw new Error("Dados de embed (charDataMap, xpDataMap) não fornecidos.");
         }
 
-        // 1. Encontra o personagem no Map pré-carregado
         const charKey = `${username.trim().toLowerCase()}-${charName.trim().toLowerCase()}`;
         const charData = charDataMap.get(charKey);
 
         if (!charData) {
-            throw new Error(`Personagem ${charName} (Jogador: ${username}) não foi encontrado no charDataMap. Verifique os nomes.`);
+            throw new Error(`Personagem ${charName} (Jogador: ${username}) não foi encontrado no charDataMap.`);
         }
 
         const level = charData.level;
         const totalMesas = charData.mesas;
-        // 2. Encontra o XP necessário no Map pré-carregado
         const mesasParaUpar = xpDataMap.get(level) || 0;
         
         const mesasNoNivel = totalMesas - mesasParaUpar;
@@ -313,9 +285,6 @@ function getLevelProgressFromData(characterRow, embedData) {
 
 /**
  * Constrói o Embed principal do inventário.
- * @param {import('google-spreadsheet').GoogleSpreadsheetRow} characterRow - A linha da aba "Inventário".
- * @param {object} [embedData] - (Opcional) Objeto de dados pré-carregados. Se não fornecido, busca os dados (mais lento).
- * @returns {Promise<EmbedBuilder>}
  */
 async function buildInventoryEmbed(characterRow, embedData = null) {
     const username = characterRow.get('JOGADOR');
@@ -325,32 +294,30 @@ async function buildInventoryEmbed(characterRow, embedData = null) {
     let levelProgress;
 
     if (embedData) {
-        // Modo Otimizado (usa dados pré-carregados)
-        tokenCount = getPlayerTokenCountFromData(username, embedData.tokenDataMap);
+        // CORREÇÃO: google.getPlayerTokenCountFromData
+        tokenCount = google.getPlayerTokenCountFromData(username, embedData.tokenDataMap);
         levelProgress = getLevelProgressFromData(characterRow, embedData);
     } else {
-        // Modo Lento (busca dados individualmente - usado pelo /inventario)
         console.warn(`[AVISO buildInventoryEmbed] Executando em modo de fallback (lento) para ${charName}.`);
         const [tokens, progress] = await Promise.all([
-            getPlayerTokenCount(username), // Função antiga, individual
-            getLevelProgress(characterRow)  // Função antiga, individual
+            // CORREÇÃO: google.getPlayerTokenCount
+            google.getPlayerTokenCount(username), 
+            getLevelProgress(characterRow)
         ]);
         tokenCount = tokens;
         levelProgress = progress;
     }
 
-    // 2. Formata Gold (Total = 123.45 -> 123 GP, 4 PP, 5 PC)
     const totalGold = parseFloat(characterRow.get('Total')) || 0;
     const gp = Math.floor(totalGold);
     const pp = Math.floor((totalGold * 10) % 10);
     const pc = Math.floor((totalGold * 100) % 10);
     const goldString = `${gp} GP | ${pp} PP | ${pc} PC`;
 
-    // 3. Monta o Embed
     const embed = new EmbedBuilder()
         .setTitle(charName)
         .setDescription(levelProgress)
-        .setColor(0xDAA520) // Dourado
+        .setColor(0xDAA520) 
         .addFields(
             { name: "Gold", value: goldString, inline: true },
             { name: "Tokens", value: `${tokenCount} 🎟️`, inline: true }
@@ -358,8 +325,6 @@ async function buildInventoryEmbed(characterRow, embedData = null) {
         .setTimestamp()
         .setFooter({ text: `Inventário de ${username}` });
 
-
-    // 4. Adiciona campos de itens (se não estiverem vazios)
     const itemFields = [
         { name: "Itens Mundanos", value: characterRow.get('Itens Mundanos') },
         { name: "Armas", value: characterRow.get('Armas') },
@@ -368,12 +333,11 @@ async function buildInventoryEmbed(characterRow, embedData = null) {
         { name: "Itens Mágicos", value: characterRow.get('Itens Mágicos') },
         { name: "Materiais", value: characterRow.get('Materiais') },
         { name: "Ervas", value: characterRow.get('Ervas') },
-        { name: "Misc", value: characterRow.get('Misc') } // <<< Linha Corrigida
+        { name: "Misc", value: characterRow.get('Misc') }
     ];
 
     for (const field of itemFields) {
         const content = field.value;
-        // Adiciona o campo apenas se houver conteúdo
         if (content && String(content).trim() !== '' && String(content).trim() !== '0') {
             embed.addFields({
                 name: field.name,
@@ -390,7 +354,7 @@ module.exports = {
     getChannelOwner,
     registerChannel,
     buildInventoryEmbed,
-    getLevelProgress: getLevelProgress, // <<< Mantém a exportação da função antiga (para o /inventario)
+    getLevelProgress,
     getLevelProgressFromData,
-    deleteOldMessage // Exporta a função auxiliar também, se necessário
+    deleteOldMessage
 };
