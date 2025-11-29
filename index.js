@@ -3,7 +3,7 @@ require('dotenv').config();
 const { loadChannelRules } = require('./utils/channelGuard.js'); // +++ IMPORTA O GUARD +++
 const { handleRollemMessage } = require('./utils/rollemListener.js'); // <<< NOVO: Importa o escutador
 const rollObserver = require('./utils/rollObserver.js');
-const { preloadInventoryEmbedData, docCraft } = require('./utils/google.js');
+const { preloadInventoryEmbedData, docCraft, flushDocCache } = require('./utils/google.js');
 const { preloadItemCategories } = require('./utils/itemUtils.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -171,10 +171,25 @@ function startRoutineGarbageCollector() {
     const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 Hora
 
     setInterval(() => {
-        // console.log(`[INFO GarbageCollector] A executar limpeza de rotina...`);
-        console.log(`[INFO Rotina] A executar limpeza (GarbageCollector) e salvamento de estado (Persistência)...`);
+        console.log(`[INFO Rotina] A executar ciclo de manutenção (Save + Flush + GC)...`);
         saveAllStates(); // +++ 1. SALVAMENTO PERIÓDICO (Checkpoint) +++
         forceCleanup(false); // Chama a limpeza (sem forçar)
+
+        // +++ LIMPEZA PROFUNDA DE RAM +++
+        try {
+            flushDocCache(); // Reseta as planilhas do Google (liberta cache de células)
+        } catch (e) {
+            console.error("Erro ao limpar cache do Google:", e);
+        }
+        if (global.gc) {
+            // Força o Node a limpar o lixo da memória AGORA
+            const ramAntes = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
+            global.gc();
+            const ramDepois = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
+            console.log(`[INFO GC] Memória limpa: ${ramAntes}MB -> ${ramDepois}MB`);
+        } else {
+            console.warn("[AVISO] O bot não foi iniciado com --expose-gc. A limpeza manual falhou.");
+        }
     }, CHECK_INTERVAL_MS);
 }
 // +++ FIM: SISTEMA DE GESTÃO DE MEMÓRIA +++

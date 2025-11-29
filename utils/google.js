@@ -31,11 +31,23 @@ const serviceAccountAuth = new JWT({
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
-const docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
-const docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
-const docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
-const docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
-const docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
+let docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
+let docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
+let docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
+let docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
+let docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
+ /**
+ * Recria as instâncias das planilhas para libertar o cache de células (loadCells) da memória.
+ * Deve ser chamado periodicamente pelo GarbageCollector.
+ */
+function flushDocCache() {
+    console.log("[INFO Google] A limpar cache das planilhas (Flush)...");
+    docSorteio = new GoogleSpreadsheet(SORTEIO_SHEET_ID, serviceAccountAuth);
+    docControle = new GoogleSpreadsheet(CONTROLE_SHEET_ID, serviceAccountAuth);
+    docCraft = new GoogleSpreadsheet(TABELA_CRAFT_ID, serviceAccountAuth);
+    docInventario = new GoogleSpreadsheet(INVENTARIO_SHEET_ID, serviceAccountAuth);
+    docComprasVendas = new GoogleSpreadsheet(COMPRAS_VENDAS_ID, serviceAccountAuth);
+}
 
 // +++ INÍCIO DA CORREÇÃO (BUG 3): Fila Global de Salvamento +++
 const saveQueue = [];
@@ -813,6 +825,7 @@ module.exports = {
   docInventario,
   docCraft,
   docComprasVendas,
+  flushDocCache,
   getPlayerTokenCount,
   spendPlayerTokens,
   fetchPlayerLevels,
